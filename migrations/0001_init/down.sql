@@ -1,0 +1,17 @@
+DROP TABLE IF EXISTS payments;
+DROP TABLE IF EXISTS order_items;
+DROP TABLE IF EXISTS orders;
+DROP TABLE IF EXISTS cart_items;
+DROP TABLE IF EXISTS cart;
+DROP TABLE IF EXISTS favorites;
+DROP TABLE IF EXISTS variants;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS user_addresses;
+DROP TABLE IF EXISTS users;
+
+DROP TYPE IF EXISTS payment_status;
+DROP TYPE IF EXISTS delivery_type;
+DROP TYPE IF EXISTS order_status;
+DROP TYPE IF EXISTS product_status;
+DROP TYPE IF EXISTS user_role;
+
