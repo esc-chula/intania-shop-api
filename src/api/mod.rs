@@ -12,7 +12,7 @@ pub mod handlers;
 use crate::api::errors::handle_404;
 use crate::api::fairings::cors;
 use crate::api::handlers::{
-    health, product::handler as product_handler, upload, user::handler as user_handler,
+    health, product::handler as product_handler, upload, user::handler as user_handler, cart as cart_handler,
 };
 use crate::core::user::{
     repository::DieselRepo as UserRepository, service::Service as UserService,
@@ -63,6 +63,11 @@ pub fn router(pool: &DBPool, storage_service: StorageService) -> Router {
             Router::new()
                 .route("/register", post(user_handler::register))
                 .route("/login", post(user_handler::login)),
+        )
+        .nest(
+            "/cart",
+            Router::new()
+                .route("/items", put(cart_handler::add_item)),
         )
         .with_state(state)
         .layer(cors::layer())
