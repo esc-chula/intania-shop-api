@@ -7,7 +7,7 @@ use std::io::Write;
 
 use crate::schema::users;
 
-use super::entity::{User};
+use super::entity::{User, NewUser};
 
 
 use diesel_derive_enum::DbEnum;
@@ -89,6 +89,18 @@ impl From<super::entity::User> for NewUserModel {
             password_hash: user.password_hash,
             phone: user.phone,
             role: user.role.into(), // DomainRole -> DbRole
+        }
+    }
+}
+
+impl From<super::entity::NewUser> for NewUserModel {
+    fn from(new_user: super::entity::NewUser) -> Self {
+        NewUserModel {
+            full_name: if new_user.full_name.is_empty() { None } else { Some(new_user.full_name) },
+            email: new_user.email,
+            password_hash: new_user.password_hash,
+            phone: new_user.phone,
+            role: new_user.role.into(), // DomainRole -> DbRole
         }
     }
 }
