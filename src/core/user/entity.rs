@@ -64,3 +64,32 @@ impl From<User> for AbstractUser {
     }
 }
 
+// Registration entities
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UserRegistration {
+    pub full_name: String,
+    pub email: String,
+    pub password: String,
+    pub confirm_password: String,
+    pub phone: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RegistrationResponse {
+    pub user: AbstractUser,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LoginResponse {
+    pub user: AbstractUser,
+    pub token: String,
+    pub message: String,
+}
+
