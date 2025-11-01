@@ -9,6 +9,16 @@
 
 set -e
 
+# Detect OS
+case "$(uname -s)" in
+    CYGWIN*|MINGW*|MSYS*)
+        IS_WINDOWS=true
+        ;;
+    *)
+        IS_WINDOWS=false
+        ;;
+esac
+
 echo "Running Rust pre-commit checks..."
 
 restage_files() {

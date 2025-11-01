@@ -7,19 +7,13 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
       - id: check-merge-conflict
+      - id: check-executables-have-shebangs
 
   - repo: local
     hooks:
-      - id: rustfmt
-        name: rustfmt
-        entry: cargo fmt
-        language: system
-        args: [--all, --check, --]
-        pass_filenames: false
-
-      - id: clippy
-        name: clippy
-        entry: cargo clippy
-        language: system
-        args: [--all-targets, --all-features, --, -D, warnings]
+      - id: rust-pre-commit
+        name: Rust pre-commit checks
+        entry: ./scripts/pre-commit-rust.sh
+        language: script
+        files: '\.(rs|toml)$'
         pass_filenames: false

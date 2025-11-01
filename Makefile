@@ -12,25 +12,48 @@ help:
 	@echo "  pre-commit  - Install pre-commit hooks"
 	@echo "  clean       - Clean build artifacts"
 
+# Detect OS
+UNAME_S := $(shell uname -s)
+ifeq ($(OS),Windows_NT)
+    DETECTED_OS := Windows
+else
+    DETECTED_OS := $(UNAME_S)
+endif
+
 setup:
-	@echo "Installing development tools..."
-	rustup component add rustfmt clippy
-	cargo install cargo-llvm-cov
-	cargo install cargo-audit
-	@if ! command -v pre-commit &> /dev/null; then \
+	@echo "Installing development tools for $(DETECTED_OS)..."
+	@rustup component add rustfmt clippy
+	@cargo install cargo-llvm-cov
+	@cargo install cargo-audit
+	@if ! command -v pre-commit >nul 2>&1 && ! command -v pre-commit >/dev/null 2>&1; then \
 		echo "Installing pre-commit..."; \
-		if command -v pip3 &> /dev/null; then \
-			pip3 install pre-commit; \
-		elif command -v pip &> /dev/null; then \
-			pip install pre-commit; \
-		elif command -v brew &> /dev/null; then \
+		if command -v brew >nul 2>&1 || command -v brew >/dev/null 2>&1; then \
 			brew install pre-commit; \
+		elif command -v python3 >nul 2>&1 || command -v python3 >/dev/null 2>&1; then \
+			if command -v pip3 >nul 2>&1 || command -v pip3 >/dev/null 2>&1; then \
+				pip3 install pre-commit --user; \
+			else \
+				python3 -m pip install pre-commit --user; \
+			fi; \
+		elif command -v python >nul 2>&1 || command -v python >/dev/null 2>&1; then \
+			if command -v pip >nul 2>&1 || command -v pip >/dev/null 2>&1; then \
+				pip install pre-commit --user; \
+			else \
+				python -m pip install pre-commit --user; \
+			fi; \
+		elif command -v choco >nul 2>&1 || command -v choco >/dev/null 2>&1; then \
+			choco install pre-commit; \
 		else \
-			echo "Please install pre-commit manually: pip install pre-commit"; \
+			echo "Please install pre-commit manually:"; \
+			echo "  On macOS: brew install pre-commit"; \
+			echo "  On Windows: choco install pre-commit"; \
+			echo "  Or with pip: pip install pre-commit"; \
+			echo "  Or visit: https://pre-commit.com/#installation"; \
 			exit 1; \
 		fi; \
 	fi
-	pre-commit install
+	@pre-commit install
+	@echo "Setup complete! Pre-commit hooks are now installed."
 
 build:
 	cargo build
