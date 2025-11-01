@@ -2,7 +2,6 @@ use axum::{routing::get, Router};
 use dotenvy::dotenv;
 use std::net::SocketAddr;
 use tracing::{error, info};
-use tracing_subscriber;
 
 mod config;
 mod utils;

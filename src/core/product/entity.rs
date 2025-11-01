@@ -4,20 +4,17 @@ use bigdecimal::BigDecimal;
 
 #[derive(Debug, Clone, Serialize, Deserialize, DbEnum)]
 #[ExistingTypePath = "crate::schema::sql_types::ProductStatus"]
+#[derive(Default)]
 pub enum ProductStatus {
     #[db_rename = "PREORDER"]
     Preorder,
     #[db_rename = "IN_STOCK"]
+    #[default]
     InStock,
     #[db_rename = "OUT_OF_STOCK"]
     OutOfStock,
 }
 
-impl Default for ProductStatus {
-    fn default() -> Self {
-        ProductStatus::InStock
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Product {

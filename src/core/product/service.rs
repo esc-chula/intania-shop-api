@@ -81,11 +81,10 @@ impl ProductService {
         }
 
         // Validate updated data if provided
-        if let Some(ref name) = update_product.name {
-            if let Some(ref base_price) = update_product.base_price {
+        if let Some(ref name) = update_product.name
+            && let Some(ref base_price) = update_product.base_price {
                 self.validate_product_data(name, base_price)?;
             }
-        }
 
         // Check if product exists
         self.repository.find_by_id(product_id).await?;
