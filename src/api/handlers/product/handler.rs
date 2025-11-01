@@ -56,6 +56,28 @@ pub async fn get_product(
     }
 }
 
+// GET /products/:id/details
+pub async fn get_product_detail(
+    State(state): State<ApiState>,
+    Path(product_id): Path<i64>,
+) -> impl IntoResponse {
+    let service = get_product_service(&state);
+
+    match service.get_product_detail(product_id).await {
+        Ok(product_detail) => {
+            (StatusCode::OK, Json(ProductResponse::new(product_detail))).into_response()
+        }
+        Err(e) => {
+            let status = if e.to_string().contains("not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            (status, Json(ErrorResponse::new(e.to_string()))).into_response()
+        }
+    }
+}
+
 // GET /products
 pub async fn list_products(
     State(state): State<ApiState>,

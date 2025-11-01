@@ -44,6 +44,7 @@ pub fn router(pool: &DBPool) -> Router {
                 .route("/", post(product_handler::create_product))
                 .route("/search", get(product_handler::search_products))
                 .route("/:id", get(product_handler::get_product))
+                .route("/:id/details", get(product_handler::get_product_detail))
                 .route("/:id", put(product_handler::update_product))
                 .route("/:id", delete(product_handler::delete_product)),
         )

@@ -58,3 +58,22 @@ impl From<Product> for ProductListItem {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Variant {
+    pub variant_id: i64,
+    pub product_id: i64,
+    pub size: Option<String>,
+    pub color: Option<String>,
+    pub stock_quantity: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProductDetail {
+    pub product_id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub base_price: BigDecimal,
+    pub status: ProductStatus,
+    pub variants: Vec<Variant>,
+}

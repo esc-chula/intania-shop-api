@@ -3,9 +3,11 @@ use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::entity::{NewProduct, Product, ProductListItem, ProductStatus, UpdateProduct};
+use super::entity::{
+    NewProduct, Product, ProductDetail, ProductListItem, ProductStatus, UpdateProduct, Variant,
+};
 use super::repository::ProductRepository;
-use crate::schema::products;
+use crate::schema::{products, variants};
 use crate::utils::db::DBPool;
 use crate::utils::errors::{Error, ErrorCode};
 
@@ -43,6 +45,17 @@ pub struct UpdateProductModel {
     pub price: Option<BigDecimal>,
     pub status: Option<ProductStatus>,
     pub category: Option<String>,
+    pub stock_quantity: Option<i32>,
+}
+
+#[derive(Debug, Clone, Queryable, Selectable, Serialize, Deserialize)]
+#[diesel(table_name = variants)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct VariantModel {
+    pub variant_id: i64,
+    pub product_id: i64,
+    pub size: Option<String>,
+    pub color: Option<String>,
     pub stock_quantity: Option<i32>,
 }
 
@@ -91,6 +104,18 @@ impl From<UpdateProduct> for UpdateProductModel {
             status: update_product.status,
             category: None,
             stock_quantity: None,
+        }
+    }
+}
+
+impl From<VariantModel> for Variant {
+    fn from(model: VariantModel) -> Self {
+        Variant {
+            variant_id: model.variant_id,
+            product_id: model.product_id,
+            size: model.size,
+            color: model.color,
+            stock_quantity: model.stock_quantity,
         }
     }
 }
@@ -168,6 +193,49 @@ impl ProductRepository for DieselProductRepository {
             })?;
 
         Ok(product_models.into_iter().map(Into::into).collect())
+    }
+
+    async fn find_by_id_with_variants(&self, product_id: i64) -> Result<ProductDetail, Error> {
+        let mut conn = self.pool.get().map_err(|e| {
+            Error::with_message(ErrorCode::DatabaseError, format!("Connection error: {}", e))
+        })?;
+
+        // Get product
+        let product_model: ProductModel = products::table
+            .filter(products::id.eq(product_id))
+            .select(ProductModel::as_select())
+            .first(&mut conn)
+            .map_err(|e| match e {
+                diesel::result::Error::NotFound => {
+                    Error::with_message(ErrorCode::ResourceNotFound, "Product not found")
+                }
+                _ => {
+                    Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e))
+                }
+            })?;
+
+        // Get variants for this product
+        let variant_models: Vec<VariantModel> = variants::table
+            .filter(variants::product_id.eq(product_id))
+            .select(VariantModel::as_select())
+            .load(&mut conn)
+            .map_err(|e| {
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to fetch variants: {}", e),
+                )
+            })?;
+
+        let variants: Vec<Variant> = variant_models.into_iter().map(Into::into).collect();
+
+        Ok(ProductDetail {
+            product_id: product_model.id,
+            name: product_model.name,
+            description: product_model.description,
+            base_price: product_model.price,
+            status: product_model.status,
+            variants,
+        })
     }
 
     async fn update(
