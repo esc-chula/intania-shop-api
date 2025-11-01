@@ -1,16 +1,10 @@
 use chrono::prelude::*;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
-use axum::{
-    extract::Request,
-    http::{header, StatusCode},
-    middleware::Next,
-    response::Response,
-};
+use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use std::env;
 
-use crate::utils::errors::{Error, ErrorCode};
 use crate::core::user::entity::Role;
+use crate::utils::errors::{Error, ErrorCode};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Claims {
@@ -39,7 +33,7 @@ mod date_serializer {
         D: Deserializer<'de>,
     {
         Utc.timestamp_opt(i64::deserialize(deserializer)?, 0)
-            .single() 
+            .single()
             .ok_or_else(|| serde::de::Error::custom("invalid Unix timestamp value"))
     }
 }
@@ -70,52 +64,5 @@ impl Claims {
             Ok(token) => Ok(token),
             Err(_) => Err(Error::new(ErrorCode::InternalError)),
         }
-    }
-
-    pub fn from(token: String) -> Result<Claims, Error> {
-        let key = env::var("JWT_PASSWORD").unwrap();
-        match jsonwebtoken::decode::<Claims>(
-            &token,
-            &DecodingKey::from_secret(key.as_bytes()),
-            &Validation::new(Algorithm::HS512),
-        ) {
-            Ok(token_data) => Ok(token_data.claims),
-            Err(_) => Err(Error::new(ErrorCode::NotAuthorized)),
-        }
-    }
-}
-
-/// Axum middleware for JWT authentication
-pub async fn auth_middleware(
-    mut request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    let auth_header = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok());
-
-    let token = match auth_header {
-        Some(auth_str) if auth_str.starts_with("Bearer ") => {
-            auth_str.trim_start_matches("Bearer ").to_string()
-        }
-        _ => return Err(StatusCode::UNAUTHORIZED),
-    };
-
-    match Claims::from(token) {
-        Ok(claims) => {
-            request.extensions_mut().insert(claims);
-            Ok(next.run(request).await)
-        }
-        Err(_) => Err(StatusCode::UNAUTHORIZED),
-    }
-}
-
-#[derive(Debug)]
-pub struct AuthenticatedUser(pub Claims);
-
-impl AuthenticatedUser {
-    pub fn claims(&self) -> &Claims {
-        &self.0
     }
 }
