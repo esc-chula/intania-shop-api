@@ -1,15 +1,20 @@
-use axum::{routing::{get, post, put, delete}, Router};
+use axum::{
+    Router,
+    routing::{delete, get, post, put},
+};
 
-pub mod guards;
-pub mod fairings;
 pub mod errors;
+pub mod fairings;
+pub mod guards;
 pub mod handlers;
 
 use crate::api::errors::handle_404;
-use crate::utils::db::DBPool;
 use crate::api::fairings::cors;
 use crate::api::handlers::{health, products, users};
-use crate::core::user::{repository::DieselRepo as UserRepository, service::Service as UserService};
+use crate::core::user::{
+    repository::DieselRepo as UserRepository, service::Service as UserService,
+};
+use crate::utils::db::DBPool;
 
 use std::sync::Arc;
 
@@ -20,15 +25,14 @@ pub struct ApiState {
 }
 
 pub fn router(pool: DBPool) -> Router {
-    // Create user repository and service
     let user_repo = UserRepository::new(pool.clone());
     let user_service = UserService::new(Arc::new(user_repo));
-    
-    let state = ApiState { 
+
+    let state = ApiState {
         pool: pool.clone(),
         user_service,
     };
-    
+
     Router::new()
         .route("/health", get(health::health))
         // Product routes
@@ -45,4 +49,3 @@ pub fn router(pool: DBPool) -> Router {
         .layer(cors::layer())
         .fallback(handle_404)
 }
-

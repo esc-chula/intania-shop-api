@@ -1,14 +1,6 @@
 use diesel::prelude::*;
-use diesel::pg::Pg;
-use diesel::serialize::{self, ToSql};
-use diesel::deserialize::{self, FromSql};
-use diesel::sql_types::Text;
-use std::io::Write;
 
 use crate::schema::users;
-
-use super::entity::{User, NewUser};
-
 
 use diesel_derive_enum::DbEnum;
 
@@ -50,10 +42,8 @@ pub struct UserModel {
     pub email: String,
     pub password_hash: String,
     pub phone: Option<String>,
-    pub role: DbRole,  // DB enum
+    pub role: DbRole,
     pub created_at: chrono::NaiveDateTime,
-    pub google_sub: Option<String>,
-    pub google_picture: Option<String>,
     pub email_verified: bool,
 }
 
@@ -65,7 +55,7 @@ impl From<UserModel> for super::entity::User {
             email: model.email,
             password_hash: model.password_hash,
             phone: model.phone,
-            role: model.role.into(), // DbRole -> DomainRole
+            role: model.role.into(),
             created_at: model.created_at,
         }
     }
@@ -78,17 +68,21 @@ pub struct NewUserModel {
     pub email: String,
     pub password_hash: String,
     pub phone: Option<String>,
-    pub role: DbRole, 
+    pub role: DbRole,
 }
 
 impl From<super::entity::User> for NewUserModel {
     fn from(user: super::entity::User) -> Self {
         NewUserModel {
-            full_name: if user.full_name.is_empty() { None } else { Some(user.full_name) },
+            full_name: if user.full_name.is_empty() {
+                None
+            } else {
+                Some(user.full_name)
+            },
             email: user.email,
             password_hash: user.password_hash,
             phone: user.phone,
-            role: user.role.into(), // DomainRole -> DbRole
+            role: user.role.into(),
         }
     }
 }
@@ -96,7 +90,11 @@ impl From<super::entity::User> for NewUserModel {
 impl From<super::entity::NewUser> for NewUserModel {
     fn from(new_user: super::entity::NewUser) -> Self {
         NewUserModel {
-            full_name: if new_user.full_name.is_empty() { None } else { Some(new_user.full_name) },
+            full_name: if new_user.full_name.is_empty() {
+                None
+            } else {
+                Some(new_user.full_name)
+            },
             email: new_user.email,
             password_hash: new_user.password_hash,
             phone: new_user.phone,

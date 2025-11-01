@@ -5,12 +5,9 @@ use axum::{
 };
 use serde_json::json;
 
-use crate::core::user::{
-    entity::{UserRegistration, LoginRequest},
-    service::Service,
-};
-use crate::utils::errors::{Error, ErrorCode};
 use crate::api::ApiState;
+use crate::core::user::entity::{LoginRequest, UserRegistration};
+use crate::utils::errors::ErrorCode;
 
 pub async fn register(
     State(state): State<ApiState>,
@@ -24,9 +21,12 @@ pub async fn register(
                 ErrorCode::ResourceAlreadyExists => StatusCode::CONFLICT,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            (status, Json(json!({
-                "error": err.message
-            })))
+            (
+                status,
+                Json(json!({
+                    "error": err.message
+                })),
+            )
         }
     }
 }
@@ -43,9 +43,12 @@ pub async fn login(
                 ErrorCode::InvalidCredentials => StatusCode::UNAUTHORIZED,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            (status, Json(json!({
-                "error": err.message
-            })))
+            (
+                status,
+                Json(json!({
+                    "error": err.message
+                })),
+            )
         }
     }
 }

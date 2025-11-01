@@ -129,10 +129,6 @@ diesel::table! {
         phone -> Nullable<Varchar>,
         role -> UserRole,
         created_at -> Timestamp,
-        #[max_length = 255]
-        google_sub -> Nullable<Varchar>,
-        #[max_length = 255]
-        google_picture -> Nullable<Varchar>,
         email_verified -> Bool,
     }
 }
