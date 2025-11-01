@@ -157,7 +157,7 @@ impl ProductRepository for DieselProductRepository {
 
         Ok(product_models
             .into_iter()
-            .map(|model| model.into())
+            .map(std::convert::Into::into)
             .collect())
     }
 
@@ -243,7 +243,7 @@ impl ProductRepository for DieselProductRepository {
 
         Ok(product_models
             .into_iter()
-            .map(|model| model.into())
+            .map(std::convert::Into::into)
             .collect())
     }
 

@@ -26,9 +26,10 @@ pub async fn create_product(
     match service.create_product(new_product).await {
         Ok(product) => (StatusCode::CREATED, Json(ProductResponse::new(product))).into_response(),
         Err(e) => {
-            let status = match e.to_string().contains("already exists") {
-                true => StatusCode::CONFLICT,
-                false => StatusCode::BAD_REQUEST,
+            let status = if e.to_string().contains("already exists") {
+                StatusCode::CONFLICT
+            } else {
+                StatusCode::BAD_REQUEST
             };
             (status, Json(ErrorResponse::new(e.to_string()))).into_response()
         }
@@ -45,9 +46,10 @@ pub async fn get_product(
     match service.get_product(product_id).await {
         Ok(product) => (StatusCode::OK, Json(ProductResponse::new(product))).into_response(),
         Err(e) => {
-            let status = match e.to_string().contains("not found") {
-                true => StatusCode::NOT_FOUND,
-                false => StatusCode::BAD_REQUEST,
+            let status = if e.to_string().contains("not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
             };
             (status, Json(ErrorResponse::new(e.to_string()))).into_response()
         }
@@ -85,9 +87,10 @@ pub async fn update_product(
     match service.update_product(product_id, update_product).await {
         Ok(product) => (StatusCode::OK, Json(ProductResponse::new(product))).into_response(),
         Err(e) => {
-            let status = match e.to_string().contains("not found") {
-                true => StatusCode::NOT_FOUND,
-                false => StatusCode::BAD_REQUEST,
+            let status = if e.to_string().contains("not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
             };
             (status, Json(ErrorResponse::new(e.to_string()))).into_response()
         }
@@ -104,9 +107,10 @@ pub async fn delete_product(
     match service.delete_product(product_id).await {
         Ok(()) => (StatusCode::NO_CONTENT, "").into_response(),
         Err(e) => {
-            let status = match e.to_string().contains("not found") {
-                true => StatusCode::NOT_FOUND,
-                false => StatusCode::BAD_REQUEST,
+            let status = if e.to_string().contains("not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
             };
             (status, Json(ErrorResponse::new(e.to_string()))).into_response()
         }

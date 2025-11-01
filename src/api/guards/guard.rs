@@ -43,7 +43,7 @@ impl Claims {
         let iat = Utc::now();
         let exp = match role {
             Role::Admin => iat + chrono::Duration::minutes(30),
-            _ => iat + chrono::Duration::days(1),
+            Role::User => iat + chrono::Duration::days(1),
         };
 
         Claims {

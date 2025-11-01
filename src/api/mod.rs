@@ -26,7 +26,7 @@ pub struct ApiState {
     pub user_service: UserService,
 }
 
-pub fn router(pool: DBPool) -> Router {
+pub fn router(pool: &DBPool) -> Router {
     let user_repo = UserRepository::new(pool.clone());
     let user_service = UserService::new(Arc::new(user_repo));
 

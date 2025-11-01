@@ -62,8 +62,8 @@ impl ProductService {
             ));
         }
 
-        let offset = (page.saturating_sub(1) * page_size) as i64;
-        let limit = page_size as i64;
+        let offset = i64::from(page.saturating_sub(1) * page_size);
+        let limit = i64::from(page_size);
 
         let products = self.repository.find_all(offset, limit).await?;
         let total = self.repository.count_total().await?;
@@ -73,7 +73,8 @@ impl ProductService {
             total,
             page,
             page_size,
-            total_pages: ((total as f64) / (page_size as f64)).ceil() as u32,
+            total_pages: u32::try_from((total + i64::from(page_size) - 1) / i64::from(page_size))
+                .unwrap_or(u32::MAX),
         })
     }
 
@@ -136,8 +137,8 @@ impl ProductService {
             ));
         }
 
-        let offset = (page.saturating_sub(1) * page_size) as i64;
-        let limit = page_size as i64;
+        let offset = i64::from(page.saturating_sub(1) * page_size);
+        let limit = i64::from(page_size);
 
         self.repository.search_by_name(name, offset, limit).await
     }
