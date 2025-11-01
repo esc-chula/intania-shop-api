@@ -1,9 +1,15 @@
+use axum::http::{HeaderName, Method};
 use tower_http::cors::CorsLayer;
-use axum::http::{Method, HeaderName};
 
 pub fn layer() -> CorsLayer {
     CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([
             HeaderName::from_static("content-type"),
             HeaderName::from_static("authorization"),

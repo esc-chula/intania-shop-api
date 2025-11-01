@@ -1,8 +1,8 @@
-use crate::utils::errors::{Error, ErrorCode};
-use super::entity::{Product, NewProduct, UpdateProduct, ProductListItem, ProductStatus};
+use super::entity::{NewProduct, Product, ProductListItem, ProductStatus, UpdateProduct};
 use super::repository::ProductRepository;
-use std::sync::Arc;
+use crate::utils::errors::{Error, ErrorCode};
 use bigdecimal::BigDecimal;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct ProductService {
@@ -24,10 +24,11 @@ impl ProductService {
         }
 
         // Check if product with same name already exists
-        let search_results = self.repository
+        let search_results = self
+            .repository
             .search_by_name(&new_product.name, 0, 1)
             .await?;
-        
+
         if !search_results.is_empty() {
             return Err(Error::with_message(
                 ErrorCode::ResourceAlreadyExists,
@@ -49,7 +50,11 @@ impl ProductService {
         self.repository.find_by_id(product_id).await
     }
 
-    pub async fn list_products(&self, page: u32, page_size: u32) -> Result<ProductListResponse, Error> {
+    pub async fn list_products(
+        &self,
+        page: u32,
+        page_size: u32,
+    ) -> Result<ProductListResponse, Error> {
         if page_size == 0 || page_size > 100 {
             return Err(Error::with_message(
                 ErrorCode::ValidationError,
@@ -72,7 +77,11 @@ impl ProductService {
         })
     }
 
-    pub async fn update_product(&self, product_id: i64, update_product: UpdateProduct) -> Result<Product, Error> {
+    pub async fn update_product(
+        &self,
+        product_id: i64,
+        update_product: UpdateProduct,
+    ) -> Result<Product, Error> {
         if product_id <= 0 {
             return Err(Error::with_message(
                 ErrorCode::ValidationError,
@@ -82,9 +91,10 @@ impl ProductService {
 
         // Validate updated data if provided
         if let Some(ref name) = update_product.name
-            && let Some(ref base_price) = update_product.base_price {
-                self.validate_product_data(name, base_price)?;
-            }
+            && let Some(ref base_price) = update_product.base_price
+        {
+            self.validate_product_data(name, base_price)?;
+        }
 
         // Check if product exists
         self.repository.find_by_id(product_id).await?;
@@ -106,7 +116,12 @@ impl ProductService {
         self.repository.delete(product_id).await
     }
 
-    pub async fn search_products(&self, name: &str, page: u32, page_size: u32) -> Result<Vec<ProductListItem>, Error> {
+    pub async fn search_products(
+        &self,
+        name: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<Vec<ProductListItem>, Error> {
         if name.trim().is_empty() {
             return Err(Error::with_message(
                 ErrorCode::ValidationError,

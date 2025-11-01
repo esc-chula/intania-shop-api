@@ -27,7 +27,8 @@ impl Error {
             ErrorCode::ResourceAlreadyExists => "Resource already exists",
             ErrorCode::ResourceNotFound => "Resource not found",
             ErrorCode::InvalidCredentials => "Invalid credentials",
-        }.to_string();
+        }
+        .to_string();
         Self { code, message }
     }
 
@@ -52,4 +53,3 @@ impl From<anyhow::Error> for Error {
         Self::with_message(ErrorCode::InternalError, err.to_string())
     }
 }
-

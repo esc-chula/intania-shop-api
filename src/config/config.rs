@@ -11,7 +11,9 @@ impl AppConfig {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| anyhow::anyhow!("Missing env var DATABASE_URL"))?;
 
-        Ok(Self { server_addr, database_url })
+        Ok(Self {
+            server_addr,
+            database_url,
+        })
     }
 }
-

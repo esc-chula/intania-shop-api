@@ -1,16 +1,16 @@
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use dotenvy::dotenv;
 use std::net::SocketAddr;
 use tracing::{error, info};
 
-mod config;
-mod utils;
 mod api;
+mod config;
 mod core;
 mod schema;
+mod utils;
 
 use crate::config::AppConfig;
-use crate::utils::db as db;
+use crate::utils::db;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -30,8 +30,7 @@ async fn main() -> anyhow::Result<()> {
         return Err(e);
     }
 
-    let app: Router = api::router(pool.clone())
-        .route("/", get(|| async { "intania-shop-api" }));
+    let app: Router = api::router(pool.clone()).route("/", get(|| async { "intania-shop-api" }));
 
     let addr: SocketAddr = cfg.server_addr.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -39,4 +38,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
