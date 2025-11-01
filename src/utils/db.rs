@@ -13,8 +13,11 @@ pub async fn connect_pool(database_url: &str) -> anyhow::Result<DBPool> {
     Ok(pool)
 }
 
-pub fn get_connection(pool: &DBPool) -> anyhow::Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>> {
-    pool.get().map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))
+pub fn get_connection(
+    pool: &DBPool,
+) -> anyhow::Result<r2d2::PooledConnection<ConnectionManager<PgConnection>>> {
+    pool.get()
+        .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))
 }
 
 pub async fn run_migrations(pool: &DBPool) -> anyhow::Result<()> {
@@ -28,4 +31,3 @@ pub async fn run_migrations(pool: &DBPool) -> anyhow::Result<()> {
     .await??;
     Ok(())
 }
-

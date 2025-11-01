@@ -1,3 +1,3 @@
 pub mod health;
-pub mod products;
-pub mod users;
+pub mod product;
+pub mod user;

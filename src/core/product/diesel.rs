@@ -1,13 +1,13 @@
 use async_trait::async_trait;
-use diesel::prelude::*;
 use bigdecimal::BigDecimal;
+use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::entity::{NewProduct, Product, ProductListItem, ProductStatus, UpdateProduct};
+use super::repository::ProductRepository;
 use crate::schema::products;
 use crate::utils::db::DBPool;
 use crate::utils::errors::{Error, ErrorCode};
-use super::entity::{Product, NewProduct, UpdateProduct, ProductListItem, ProductStatus};
-use super::repository::ProductRepository;
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize, Deserialize)]
 #[diesel(table_name = products)]
@@ -107,7 +107,10 @@ impl ProductRepository for DieselProductRepository {
             .returning(ProductModel::as_returning())
             .get_result(&mut conn)
             .map_err(|e| {
-                Error::with_message(ErrorCode::DatabaseError, format!("Failed to create product: {}", e))
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to create product: {}", e),
+                )
             })?;
 
         Ok(product_model.into())
@@ -126,7 +129,9 @@ impl ProductRepository for DieselProductRepository {
                 diesel::result::Error::NotFound => {
                     Error::with_message(ErrorCode::ResourceNotFound, "Product not found")
                 }
-                _ => Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e)),
+                _ => {
+                    Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e))
+                }
             })?;
 
         Ok(product_model.into())
@@ -144,13 +149,23 @@ impl ProductRepository for DieselProductRepository {
             .limit(limit)
             .load(&mut conn)
             .map_err(|e| {
-                Error::with_message(ErrorCode::DatabaseError, format!("Failed to fetch products: {}", e))
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to fetch products: {}", e),
+                )
             })?;
 
-        Ok(product_models.into_iter().map(|model| model.into()).collect())
+        Ok(product_models
+            .into_iter()
+            .map(|model| model.into())
+            .collect())
     }
 
-    async fn update(&self, product_id: i64, update_product: UpdateProduct) -> Result<Product, Error> {
+    async fn update(
+        &self,
+        product_id: i64,
+        update_product: UpdateProduct,
+    ) -> Result<Product, Error> {
         let mut conn = self.pool.get().map_err(|e| {
             Error::with_message(ErrorCode::DatabaseError, format!("Connection error: {}", e))
         })?;
@@ -166,7 +181,10 @@ impl ProductRepository for DieselProductRepository {
                 diesel::result::Error::NotFound => {
                     Error::with_message(ErrorCode::ResourceNotFound, "Product not found")
                 }
-                _ => Error::with_message(ErrorCode::DatabaseError, format!("Failed to update product: {}", e)),
+                _ => Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to update product: {}", e),
+                ),
             })?;
 
         Ok(product_model.into())
@@ -181,7 +199,10 @@ impl ProductRepository for DieselProductRepository {
             .filter(products::product_id.eq(product_id))
             .execute(&mut conn)
             .map_err(|e| {
-                Error::with_message(ErrorCode::DatabaseError, format!("Failed to delete product: {}", e))
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to delete product: {}", e),
+                )
             })?;
 
         if deleted_rows == 0 {
@@ -194,7 +215,12 @@ impl ProductRepository for DieselProductRepository {
         Ok(())
     }
 
-    async fn search_by_name(&self, name: &str, offset: i64, limit: i64) -> Result<Vec<ProductListItem>, Error> {
+    async fn search_by_name(
+        &self,
+        name: &str,
+        offset: i64,
+        limit: i64,
+    ) -> Result<Vec<ProductListItem>, Error> {
         let mut conn = self.pool.get().map_err(|e| {
             Error::with_message(ErrorCode::DatabaseError, format!("Connection error: {}", e))
         })?;
@@ -209,10 +235,16 @@ impl ProductRepository for DieselProductRepository {
             .limit(limit)
             .load(&mut conn)
             .map_err(|e| {
-                Error::with_message(ErrorCode::DatabaseError, format!("Failed to search products: {}", e))
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to search products: {}", e),
+                )
             })?;
 
-        Ok(product_models.into_iter().map(|model| model.into()).collect())
+        Ok(product_models
+            .into_iter()
+            .map(|model| model.into())
+            .collect())
     }
 
     async fn count_total(&self) -> Result<i64, Error> {
@@ -224,7 +256,10 @@ impl ProductRepository for DieselProductRepository {
             .count()
             .get_result::<i64>(&mut conn)
             .map_err(|e| {
-                Error::with_message(ErrorCode::DatabaseError, format!("Failed to count products: {}", e))
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to count products: {}", e),
+                )
             })?;
 
         Ok(count)

@@ -1,22 +1,18 @@
-use serde::{Deserialize, Serialize};
-use diesel_derive_enum::DbEnum;
 use bigdecimal::BigDecimal;
+use diesel_derive_enum::DbEnum;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, DbEnum)]
 #[ExistingTypePath = "crate::schema::sql_types::ProductStatus"]
+#[derive(Default)]
 pub enum ProductStatus {
     #[db_rename = "PREORDER"]
     Preorder,
     #[db_rename = "IN_STOCK"]
+    #[default]
     InStock,
     #[db_rename = "OUT_OF_STOCK"]
     OutOfStock,
-}
-
-impl Default for ProductStatus {
-    fn default() -> Self {
-        ProductStatus::InStock
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

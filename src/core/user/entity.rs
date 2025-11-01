@@ -92,4 +92,3 @@ pub struct LoginResponse {
     pub token: String,
     pub message: String,
 }
-
