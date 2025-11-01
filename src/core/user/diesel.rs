@@ -44,7 +44,7 @@ pub struct UserModel {
     pub phone: Option<String>,
     pub role: DbRole,
     pub created_at: chrono::NaiveDateTime,
-    pub email_verified: bool,
+    // pub email_verified: bool,
 }
 
 impl From<UserModel> for super::entity::User {

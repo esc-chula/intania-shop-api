@@ -13,11 +13,15 @@ use crate::utils::errors::{Error, ErrorCode};
 #[diesel(table_name = products)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ProductModel {
-    pub product_id: i64,
+    pub id: i64,
     pub name: String,
     pub description: Option<String>,
-    pub base_price: BigDecimal,
+    pub price: BigDecimal,
     pub status: ProductStatus,
+    pub category: Option<String>,
+    pub stock_quantity: Option<i32>,
+    pub created_at: Option<chrono::NaiveDateTime>,
+    pub updated_at: Option<chrono::NaiveDateTime>,
 }
 
 #[derive(Debug, Clone, Insertable, Serialize, Deserialize)]
@@ -25,8 +29,10 @@ pub struct ProductModel {
 pub struct NewProductModel {
     pub name: String,
     pub description: Option<String>,
-    pub base_price: BigDecimal,
+    pub price: BigDecimal,
     pub status: ProductStatus,
+    pub category: Option<String>,
+    pub stock_quantity: Option<i32>,
 }
 
 #[derive(Debug, Clone, AsChangeset, Serialize, Deserialize)]
@@ -34,17 +40,19 @@ pub struct NewProductModel {
 pub struct UpdateProductModel {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub base_price: Option<BigDecimal>,
+    pub price: Option<BigDecimal>,
     pub status: Option<ProductStatus>,
+    pub category: Option<String>,
+    pub stock_quantity: Option<i32>,
 }
 
 impl From<ProductModel> for Product {
     fn from(model: ProductModel) -> Self {
         Product {
-            product_id: model.product_id,
+            product_id: model.id,
             name: model.name,
             description: model.description,
-            base_price: model.base_price,
+            base_price: model.price,
             status: model.status,
         }
     }
@@ -53,9 +61,9 @@ impl From<ProductModel> for Product {
 impl From<ProductModel> for ProductListItem {
     fn from(model: ProductModel) -> Self {
         ProductListItem {
-            product_id: model.product_id,
+            product_id: model.id,
             name: model.name,
-            base_price: model.base_price,
+            base_price: model.price,
             status: model.status,
         }
     }
@@ -66,8 +74,10 @@ impl From<NewProduct> for NewProductModel {
         NewProductModel {
             name: new_product.name,
             description: new_product.description,
-            base_price: new_product.base_price,
+            price: new_product.base_price,
             status: new_product.status.unwrap_or_default(),
+            category: None,
+            stock_quantity: None,
         }
     }
 }
@@ -77,8 +87,10 @@ impl From<UpdateProduct> for UpdateProductModel {
         UpdateProductModel {
             name: update_product.name,
             description: update_product.description,
-            base_price: update_product.base_price,
+            price: update_product.base_price,
             status: update_product.status,
+            category: None,
+            stock_quantity: None,
         }
     }
 }
@@ -122,7 +134,7 @@ impl ProductRepository for DieselProductRepository {
         })?;
 
         let product_model: ProductModel = products::table
-            .filter(products::product_id.eq(product_id))
+            .filter(products::id.eq(product_id))
             .select(ProductModel::as_select())
             .first(&mut conn)
             .map_err(|e| match e {
@@ -144,7 +156,7 @@ impl ProductRepository for DieselProductRepository {
 
         let product_models: Vec<ProductModel> = products::table
             .select(ProductModel::as_select())
-            .order(products::product_id.desc())
+            .order(products::id.desc())
             .offset(offset)
             .limit(limit)
             .load(&mut conn)
@@ -155,10 +167,7 @@ impl ProductRepository for DieselProductRepository {
                 )
             })?;
 
-        Ok(product_models
-            .into_iter()
-            .map(std::convert::Into::into)
-            .collect())
+        Ok(product_models.into_iter().map(Into::into).collect())
     }
 
     async fn update(
@@ -173,7 +182,7 @@ impl ProductRepository for DieselProductRepository {
         let update_model: UpdateProductModel = update_product.into();
 
         let product_model: ProductModel = diesel::update(products::table)
-            .filter(products::product_id.eq(product_id))
+            .filter(products::id.eq(product_id))
             .set(&update_model)
             .returning(ProductModel::as_returning())
             .get_result(&mut conn)
@@ -196,7 +205,7 @@ impl ProductRepository for DieselProductRepository {
         })?;
 
         let deleted_rows = diesel::delete(products::table)
-            .filter(products::product_id.eq(product_id))
+            .filter(products::id.eq(product_id))
             .execute(&mut conn)
             .map_err(|e| {
                 Error::with_message(
@@ -230,7 +239,7 @@ impl ProductRepository for DieselProductRepository {
         let product_models: Vec<ProductModel> = products::table
             .filter(products::name.ilike(&search_pattern))
             .select(ProductModel::as_select())
-            .order(products::product_id.desc())
+            .order(products::id.desc())
             .offset(offset)
             .limit(limit)
             .load(&mut conn)
@@ -241,10 +250,7 @@ impl ProductRepository for DieselProductRepository {
                 )
             })?;
 
-        Ok(product_models
-            .into_iter()
-            .map(std::convert::Into::into)
-            .collect())
+        Ok(product_models.into_iter().map(Into::into).collect())
     }
 
     async fn count_total(&self) -> Result<i64, Error> {

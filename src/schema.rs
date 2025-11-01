@@ -94,13 +94,18 @@ diesel::table! {
     use diesel::sql_types::*;
     use super::sql_types::ProductStatus;
 
-    products (product_id) {
-        product_id -> Int8,
+    products (id) {
+        id -> Int8,
         #[max_length = 150]
         name -> Varchar,
         description -> Nullable<Text>,
-        base_price -> Numeric,
+        price -> Numeric,
         status -> ProductStatus,
+        #[max_length = 100]
+        category -> Nullable<Varchar>,
+        stock_quantity -> Nullable<Int4>,
+        created_at -> Nullable<Timestamp>,
+        updated_at -> Nullable<Timestamp>,
     }
 }
 
@@ -129,7 +134,6 @@ diesel::table! {
         phone -> Nullable<Varchar>,
         role -> UserRole,
         created_at -> Timestamp,
-        email_verified -> Bool,
     }
 }
 
