@@ -17,6 +17,19 @@ setup:
 	rustup component add rustfmt clippy
 	cargo install cargo-llvm-cov
 	cargo install cargo-audit
+	@if ! command -v pre-commit &> /dev/null; then \
+		echo "Installing pre-commit..."; \
+		if command -v pip3 &> /dev/null; then \
+			pip3 install pre-commit; \
+		elif command -v pip &> /dev/null; then \
+			pip install pre-commit; \
+		elif command -v brew &> /dev/null; then \
+			brew install pre-commit; \
+		else \
+			echo "Please install pre-commit manually: pip install pre-commit"; \
+			exit 1; \
+		fi; \
+	fi
 	pre-commit install
 
 build:
