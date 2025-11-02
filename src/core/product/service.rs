@@ -41,16 +41,16 @@ impl ProductService {
         self.repository.create(new_product).await
     }
 
-    pub async fn get_product(&self, product_id: i64) -> Result<Product, Error> {
-        if product_id <= 0 {
-            return Err(Error::with_message(
-                ErrorCode::ValidationError,
-                "Invalid product ID",
-            ));
-        }
+    // pub async fn get_product(&self, product_id: i64) -> Result<Product, Error> {
+    //     if product_id <= 0 {
+    //         return Err(Error::with_message(
+    //             ErrorCode::ValidationError,
+    //             "Invalid product ID",
+    //         ));
+    //     }
 
-        self.repository.find_by_id(product_id).await
-    }
+    //     self.repository.find_by_id(product_id).await
+    // }
 
     pub async fn get_product_detail(&self, product_id: i64) -> Result<ProductDetail, Error> {
         if product_id <= 0 {
