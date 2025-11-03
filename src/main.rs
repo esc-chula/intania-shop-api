@@ -34,7 +34,8 @@ async fn main() -> anyhow::Result<()> {
     let storage_service = StorageService::new(cfg.gcs_bucket_name).await?;
     info!("Connected to Google Cloud Storage");
 
-    let app: Router = api::router(&pool, storage_service).route("/", get(|| async { "intania-shop-api" }));
+    let app: Router =
+        api::router(&pool, storage_service).route("/", get(|| async { "intania-shop-api" }));
 
     let addr: SocketAddr = cfg.server_addr.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;

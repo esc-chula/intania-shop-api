@@ -28,15 +28,21 @@ impl StorageService {
         &self,
         file_data: Vec<u8>,
         original_filename: &str,
-        folder: &str, 
+        folder: &str,
     ) -> Result<(String, String)> {
         let extension = Path::new(original_filename)
             .extension()
             .and_then(|s| s.to_str())
             .unwrap_or("bin");
-        
+
         let sanitized_name = sanitize_filename(original_filename);
-        let object_name = format!("{}/{}-{}.{}", folder, Uuid::new_v4(), sanitized_name, extension);
+        let object_name = format!(
+            "{}/{}-{}.{}",
+            folder,
+            Uuid::new_v4(),
+            sanitized_name,
+            extension
+        );
 
         let mime_type = mime_guess::from_path(original_filename)
             .first_or_octet_stream()
@@ -44,7 +50,7 @@ impl StorageService {
 
         use bytes::Bytes;
         let bytes_data = Bytes::from(file_data);
-        
+
         let object = self
             .client
             .write_object(&self.bucket_name, &object_name, bytes_data)
@@ -80,7 +86,7 @@ fn sanitize_filename(filename: &str) -> String {
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or(filename);
-    
+
     stem.chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' || c == '_' {

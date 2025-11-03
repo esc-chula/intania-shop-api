@@ -1,7 +1,7 @@
 use axum::{
     Router,
-    routing::{delete, get, post, put},
     extract::DefaultBodyLimit,
+    routing::{delete, get, post, put},
 };
 
 pub mod errors;
@@ -47,8 +47,7 @@ pub fn router(pool: &DBPool, storage_service: StorageService) -> Router {
                 .route("/", get(product_handler::list_products))
                 .route("/", post(product_handler::create_product))
                 .route("/search", get(product_handler::search_products))
-                // .route("/:id", get(product_handler::get_product))
-                .route("/:id", get(product_handler::get_product_detail))
+                .route("/:id", get(product_handler::get_product))
                 .route("/:id", put(product_handler::update_product))
                 .route("/:id", delete(product_handler::delete_product)),
         )
