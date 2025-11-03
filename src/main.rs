@@ -11,6 +11,7 @@ mod utils;
 
 use crate::config::AppConfig;
 use crate::utils::db;
+use crate::utils::storage::StorageService;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -30,7 +31,10 @@ async fn main() -> anyhow::Result<()> {
         return Err(e);
     }
 
-    let app: Router = api::router(&pool).route("/", get(|| async { "intania-shop-api" }));
+    let storage_service = StorageService::new(cfg.gcs_bucket_name).await?;
+    info!("Connected to Google Cloud Storage");
+
+    let app: Router = api::router(&pool, storage_service).route("/", get(|| async { "intania-shop-api" }));
 
     let addr: SocketAddr = cfg.server_addr.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
