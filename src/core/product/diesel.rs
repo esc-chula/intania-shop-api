@@ -24,6 +24,9 @@ pub struct ProductModel {
     pub stock_quantity: Option<i32>,
     pub created_at: Option<chrono::NaiveDateTime>,
     pub updated_at: Option<chrono::NaiveDateTime>,
+    pub preview_image: Option<Vec<Option<String>>>,
+    pub preview_video: Option<Vec<Option<String>>>,
+    pub shipping: Option<Vec<Option<String>>>,
 }
 
 #[derive(Debug, Clone, Insertable, Serialize, Deserialize)]
@@ -35,6 +38,9 @@ pub struct NewProductModel {
     pub status: ProductStatus,
     pub category: Option<String>,
     pub stock_quantity: Option<i32>,
+    pub preview_image: Option<Vec<Option<String>>>,
+    pub preview_video: Option<Vec<Option<String>>>,
+    pub shipping: Option<Vec<Option<String>>>,
 }
 
 #[derive(Debug, Clone, AsChangeset, Serialize, Deserialize)]
@@ -46,6 +52,9 @@ pub struct UpdateProductModel {
     pub status: Option<ProductStatus>,
     pub category: Option<String>,
     pub stock_quantity: Option<i32>,
+    pub preview_image: Option<Vec<Option<String>>>,
+    pub preview_video: Option<Vec<Option<String>>>,
+    pub shipping: Option<Vec<Option<String>>>,
 }
 
 #[derive(Debug, Clone, Queryable, Selectable, Serialize, Deserialize)]
@@ -67,6 +76,11 @@ impl From<ProductModel> for Product {
             description: model.description,
             base_price: model.price,
             status: model.status,
+            category: model.category,
+            stock_quantity: model.stock_quantity,
+            preview_image: model.preview_image,
+            preview_video: model.preview_video,
+            shipping: model.shipping,
         }
     }
 }
@@ -78,6 +92,8 @@ impl From<ProductModel> for ProductListItem {
             name: model.name,
             base_price: model.price,
             status: model.status,
+            category: model.category,
+            preview_image: model.preview_image,
         }
     }
 }
@@ -89,8 +105,11 @@ impl From<NewProduct> for NewProductModel {
             description: new_product.description,
             price: new_product.base_price,
             status: new_product.status.unwrap_or_default(),
-            category: None,
-            stock_quantity: None,
+            category: new_product.category,
+            stock_quantity: new_product.stock_quantity,
+            preview_image: new_product.preview_image,
+            preview_video: new_product.preview_video,
+            shipping: new_product.shipping,
         }
     }
 }
@@ -102,8 +121,11 @@ impl From<UpdateProduct> for UpdateProductModel {
             description: update_product.description,
             price: update_product.base_price,
             status: update_product.status,
-            category: None,
-            stock_quantity: None,
+            category: update_product.category,
+            stock_quantity: update_product.stock_quantity,
+            preview_image: update_product.preview_image,
+            preview_video: update_product.preview_video,
+            shipping: update_product.shipping,
         }
     }
 }
@@ -234,6 +256,11 @@ impl ProductRepository for DieselProductRepository {
             description: product_model.description,
             base_price: product_model.price,
             status: product_model.status,
+            category: product_model.category,
+            stock_quantity: product_model.stock_quantity,
+            preview_image: product_model.preview_image,
+            preview_video: product_model.preview_video,
+            shipping: product_model.shipping,
             variants,
         })
     }

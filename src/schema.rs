@@ -106,6 +106,9 @@ diesel::table! {
         stock_quantity -> Nullable<Int4>,
         created_at -> Nullable<Timestamp>,
         updated_at -> Nullable<Timestamp>,
+        preview_image -> Nullable<Array<Nullable<Text>>>,
+        preview_video -> Nullable<Array<Nullable<Text>>>,
+        shipping -> Nullable<Array<Nullable<Text>>>,
     }
 }
 
