@@ -1,4 +1,4 @@
-use super::entity::{NewProduct, Product, ProductListItem, UpdateProduct};
+use super::entity::{NewProduct, Product, ProductDetail, ProductListItem, UpdateProduct};
 use crate::utils::errors::Error;
 use async_trait::async_trait;
 
@@ -6,6 +6,7 @@ use async_trait::async_trait;
 pub trait ProductRepository: Send + Sync {
     async fn create(&self, new_product: NewProduct) -> Result<Product, Error>;
     async fn find_by_id(&self, product_id: i64) -> Result<Product, Error>;
+    async fn find_by_id_with_variants(&self, product_id: i64) -> Result<ProductDetail, Error>;
     async fn find_all(&self, offset: i64, limit: i64) -> Result<Vec<ProductListItem>, Error>;
     async fn update(
         &self,

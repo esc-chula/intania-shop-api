@@ -43,8 +43,10 @@ pub async fn get_product(
 ) -> impl IntoResponse {
     let service = get_product_service(&state);
 
-    match service.get_product(product_id).await {
-        Ok(product) => (StatusCode::OK, Json(ProductResponse::new(product))).into_response(),
+    match service.get_product_detail(product_id).await {
+        Ok(product_detail) => {
+            (StatusCode::OK, Json(ProductResponse::new(product_detail))).into_response()
+        }
         Err(e) => {
             let status = if e.to_string().contains("not found") {
                 StatusCode::NOT_FOUND

@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     routing::{delete, get, post, put},
 };
 
@@ -11,12 +12,13 @@ pub mod handlers;
 use crate::api::errors::handle_404;
 use crate::api::fairings::cors;
 use crate::api::handlers::{
-    health, product::handler as product_handler, user::handler as user_handler,
+    health, product::handler as product_handler, upload, user::handler as user_handler,
 };
 use crate::core::user::{
     repository::DieselRepo as UserRepository, service::Service as UserService,
 };
 use crate::utils::db::DBPool;
+use crate::utils::storage::StorageService;
 
 use std::sync::Arc;
 
@@ -24,15 +26,17 @@ use std::sync::Arc;
 pub struct ApiState {
     pub pool: DBPool,
     pub user_service: UserService,
+    pub storage_service: StorageService,
 }
 
-pub fn router(pool: &DBPool) -> Router {
+pub fn router(pool: &DBPool, storage_service: StorageService) -> Router {
     let user_repo = UserRepository::new(pool.clone());
     let user_service = UserService::new(Arc::new(user_repo));
 
     let state = ApiState {
         pool: pool.clone(),
         user_service,
+        storage_service,
     };
 
     Router::new()
@@ -46,6 +50,13 @@ pub fn router(pool: &DBPool) -> Router {
                 .route("/:id", get(product_handler::get_product))
                 .route("/:id", put(product_handler::update_product))
                 .route("/:id", delete(product_handler::delete_product)),
+        )
+        .nest(
+            "/upload",
+            Router::new()
+                .route("/product-images", post(upload::upload_product_images))
+                .route("/product-videos", post(upload::upload_product_videos))
+                .layer(DefaultBodyLimit::max(100 * 1024 * 1024)), // 100MB limit for uploads
         )
         .nest(
             "/auth",
