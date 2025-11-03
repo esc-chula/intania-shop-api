@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use bytes::Bytes;
 use google_cloud_storage::client::Storage;
 use std::path::Path;
 use uuid::Uuid;
@@ -48,16 +49,16 @@ impl StorageService {
             .first_or_octet_stream()
             .to_string();
 
-        use bytes::Bytes;
         let bytes_data = Bytes::from(file_data);
 
-        let object = self
-            .client
-            .write_object(&self.bucket_name, &object_name, bytes_data)
-            .set_content_type(&mime_type)
-            .send_buffered()
-            .await
-            .context("Failed to upload file to Google Cloud Storage")?;
+        let object = Box::pin(
+            self.client
+                .write_object(&self.bucket_name, &object_name, bytes_data)
+                .set_content_type(&mime_type)
+                .send_buffered(),
+        )
+        .await
+        .context("Failed to upload file to Google Cloud Storage")?;
 
         let url = format!(
             "https://storage.googleapis.com/{}/{}",
@@ -74,7 +75,7 @@ impl StorageService {
     ) -> Result<Vec<(String, String)>> {
         let mut results = Vec::new();
         for (file_data, filename) in files {
-            let result = self.upload_file(file_data, &filename, folder).await?;
+            let result = Box::pin(self.upload_file(file_data, &filename, folder)).await?;
             results.push(result);
         }
         Ok(results)

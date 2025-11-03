@@ -66,7 +66,7 @@ async fn upload_files_to_path(
             .into_response();
     }
 
-    match storage.upload_files(files, folder_path).await {
+    match Box::pin(storage.upload_files(files, folder_path)).await {
         Ok(results) => {
             let uploads: Vec<FileUpload> = results
                 .into_iter()
@@ -94,12 +94,12 @@ pub async fn upload_product_images(
     State(state): State<ApiState>,
     multipart: Multipart,
 ) -> impl IntoResponse {
-    upload_files_to_path(state, multipart, "products/images").await
+    Box::pin(upload_files_to_path(state, multipart, "products/images")).await
 }
 
 pub async fn upload_product_videos(
     State(state): State<ApiState>,
     multipart: Multipart,
 ) -> impl IntoResponse {
-    upload_files_to_path(state, multipart, "products/videos").await
+    Box::pin(upload_files_to_path(state, multipart, "products/videos")).await
 }
