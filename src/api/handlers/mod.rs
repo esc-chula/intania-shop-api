@@ -3,3 +3,4 @@ pub mod product;
 pub mod upload;
 pub mod cart;
 pub mod user;
+pub mod favorite;
