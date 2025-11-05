@@ -26,18 +26,30 @@ struct NewFavoriteModel {
 
 impl From<FavoriteModel> for Favorite {
     fn from(m: FavoriteModel) -> Self {
-        Favorite { user_id: m.user_id, product_id: m.product_id, created_at: m.created_at }
+        Favorite {
+            user_id: m.user_id,
+            product_id: m.product_id,
+            created_at: m.created_at,
+        }
     }
 }
 
-pub struct DieselFavoriteRepository { pool: DBPool }
+pub struct DieselFavoriteRepository {
+    pool: DBPool,
+}
 
-impl DieselFavoriteRepository { pub fn new(pool: DBPool) -> Self { Self { pool } } }
+impl DieselFavoriteRepository {
+    pub fn new(pool: DBPool) -> Self {
+        Self { pool }
+    }
+}
 
 #[async_trait]
 impl FavoriteRepository for DieselFavoriteRepository {
     async fn add(&self, req: AddFavoriteRequest) -> Result<Favorite, Error> {
-        let mut conn = self.pool.get().map_err(|e| Error::with_message(ErrorCode::DatabaseError, format!("Connection error: {}", e)))?;
+        let mut conn = self.pool.get().map_err(|e| {
+            Error::with_message(ErrorCode::DatabaseError, format!("Connection error: {}", e))
+        })?;
 
         // verify product exists
         let _product_exists: i64 = products::table
@@ -45,12 +57,19 @@ impl FavoriteRepository for DieselFavoriteRepository {
             .select(products::id)
             .first::<i64>(&mut conn)
             .map_err(|e| match e {
-                diesel::result::Error::NotFound => Error::with_message(ErrorCode::ResourceNotFound, "Product not found"),
-                _ => Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e)),
+                diesel::result::Error::NotFound => {
+                    Error::with_message(ErrorCode::ResourceNotFound, "Product not found")
+                }
+                _ => {
+                    Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e))
+                }
             })?;
 
         // insert if not exists (idempotent)
-        let new_row = NewFavoriteModel { user_id: req.user_id, product_id: req.product_id };
+        let new_row = NewFavoriteModel {
+            user_id: req.user_id,
+            product_id: req.product_id,
+        };
 
         // Try insert; on conflict do nothing
         let _ = diesel::insert_into(favorites::table)
@@ -58,7 +77,12 @@ impl FavoriteRepository for DieselFavoriteRepository {
             .on_conflict((favorites::user_id, favorites::product_id))
             .do_nothing()
             .execute(&mut conn)
-            .map_err(|e| Error::with_message(ErrorCode::DatabaseError, format!("Failed to add favorite: {}", e)))?;
+            .map_err(|e| {
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to add favorite: {}", e),
+                )
+            })?;
 
         // Read back the row
         let fav: FavoriteModel = favorites::table
@@ -66,7 +90,12 @@ impl FavoriteRepository for DieselFavoriteRepository {
             .filter(favorites::product_id.eq(req.product_id))
             .select(FavoriteModel::as_select())
             .first(&mut conn)
-            .map_err(|e| Error::with_message(ErrorCode::DatabaseError, format!("Failed to fetch favorite: {}", e)))?;
+            .map_err(|e| {
+                Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to fetch favorite: {}", e),
+                )
+            })?;
 
         Ok(fav.into())
     }
