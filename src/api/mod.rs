@@ -8,11 +8,12 @@ pub mod errors;
 pub mod fairings;
 pub mod guards;
 pub mod handlers;
+pub mod response;
 
 use crate::api::errors::handle_404;
 use crate::api::fairings::cors;
 use crate::api::handlers::{
-    cart as cart_handler, favorite as favorite_handler, health,
+    cart::handler as cart_handler, favorite::handler as favorite_handler, health,
     product::handler as product_handler, upload, user::handler as user_handler,
 };
 use crate::core::user::{
