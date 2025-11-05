@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use diesel::prelude::*;
+use tracing::error;
 
 use crate::schema::{cart, cart_items, variants};
 use crate::utils::db::DBPool;
@@ -76,6 +77,7 @@ impl CartRepository for DieselCartRepository {
             .returning(cart::cart_id)
             .get_result::<i64>(&mut conn)
             .map_err(|e| {
+                error!(error = %e, user_id, "Failed to create cart");
                 Error::with_message(
                     ErrorCode::DatabaseError,
                     format!("Failed to create cart: {}", e),
@@ -106,13 +108,12 @@ impl CartRepository for DieselCartRepository {
             .filter(variants::variant_id.eq(variant_id_val))
             .select(variants::variant_id)
             .first::<i64>(&mut conn)
-            .map_err(|e| match e {
-                diesel::result::Error::NotFound => {
-                    Error::with_message(ErrorCode::ResourceNotFound, "Variant not found")
-                }
-                _ => {
-                    Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e))
-                }
+            .map_err(|e| if let diesel::result::Error::NotFound = e {
+                error!(error = %e, variant_id = variant_id_val, "Variant not found");
+                Error::with_message(ErrorCode::ResourceNotFound, "Variant not found")
+            } else {
+                error!(error = %e, variant_id = variant_id_val, "Database error while checking variant");
+                Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e))
             })?;
 
         // Check if item exists
@@ -132,6 +133,7 @@ impl CartRepository for DieselCartRepository {
                 .returning(CartItemModel::as_returning())
                 .get_result(&mut conn)
                 .map_err(|e| {
+                    error!(error = %e, item_id = current.item_id, "Failed to update cart item quantity");
                     Error::with_message(
                         ErrorCode::DatabaseError,
                         format!("Failed to update item: {}", e),
@@ -151,6 +153,7 @@ impl CartRepository for DieselCartRepository {
                     .returning(CartItemModel::as_returning())
                     .get_result(&mut conn)
                     .map_err(|e| {
+                        error!(error = %e, cart_id = cart_id_val, variant_id = variant_id_val, "Failed to add cart item");
                         Error::with_message(
                             ErrorCode::DatabaseError,
                             format!("Failed to add item: {}", e),
@@ -158,10 +161,13 @@ impl CartRepository for DieselCartRepository {
                     })?;
                 Ok(created.into())
             }
-            Err(e) => Err(Error::with_message(
-                ErrorCode::DatabaseError,
-                format!("Failed to query cart item: {}", e),
-            )),
+            Err(e) => {
+                error!(error = %e, cart_id = cart_id_val, variant_id = variant_id_val, "Failed to query cart item");
+                Err(Error::with_message(
+                    ErrorCode::DatabaseError,
+                    format!("Failed to query cart item: {}", e),
+                ))
+            }
         }
     }
 }

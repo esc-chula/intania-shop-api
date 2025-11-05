@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use diesel::prelude::*;
+use tracing::error;
 
 use crate::schema::{favorites, products};
 use crate::utils::db::DBPool;
@@ -48,6 +49,7 @@ impl DieselFavoriteRepository {
 impl FavoriteRepository for DieselFavoriteRepository {
     async fn add(&self, req: AddFavoriteRequest) -> Result<Favorite, Error> {
         let mut conn = self.pool.get().map_err(|e| {
+            error!(error = %e, user_id = req.user_id, product_id = req.product_id, "DB connection error while adding favorite");
             Error::with_message(ErrorCode::DatabaseError, format!("Connection error: {}", e))
         })?;
 
@@ -56,13 +58,12 @@ impl FavoriteRepository for DieselFavoriteRepository {
             .filter(products::id.eq(req.product_id))
             .select(products::id)
             .first::<i64>(&mut conn)
-            .map_err(|e| match e {
-                diesel::result::Error::NotFound => {
-                    Error::with_message(ErrorCode::ResourceNotFound, "Product not found")
-                }
-                _ => {
-                    Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e))
-                }
+            .map_err(|e| if let diesel::result::Error::NotFound = e {
+                error!(error = %e, product_id = req.product_id, "Product not found when adding favorite");
+                Error::with_message(ErrorCode::ResourceNotFound, "Product not found")
+            } else {
+                error!(error = %e, product_id = req.product_id, "Database error while verifying product");
+                Error::with_message(ErrorCode::DatabaseError, format!("Database error: {}", e))
             })?;
 
         // insert if not exists (idempotent)
@@ -78,6 +79,7 @@ impl FavoriteRepository for DieselFavoriteRepository {
             .do_nothing()
             .execute(&mut conn)
             .map_err(|e| {
+                error!(error = %e, user_id = req.user_id, product_id = req.product_id, "Failed to add favorite");
                 Error::with_message(
                     ErrorCode::DatabaseError,
                     format!("Failed to add favorite: {}", e),
@@ -91,6 +93,7 @@ impl FavoriteRepository for DieselFavoriteRepository {
             .select(FavoriteModel::as_select())
             .first(&mut conn)
             .map_err(|e| {
+                error!(error = %e, user_id = req.user_id, product_id = req.product_id, "Failed to fetch favorite after insert");
                 Error::with_message(
                     ErrorCode::DatabaseError,
                     format!("Failed to fetch favorite: {}", e),
