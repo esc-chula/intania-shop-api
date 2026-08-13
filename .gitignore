@@ -1,0 +1,17 @@
+.env
+tmp/
+coverage.out
+intania-shop-api
+
+.env.*
+!.env.example
+
+service-account.json
+*-service-account.json
+
+tmp/
+coverage.out
+*.test
+intania-shop-api
+
+.DS_Store

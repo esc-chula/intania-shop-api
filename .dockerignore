@@ -1,0 +1,9 @@
+.git
+.gitignore
+.env
+.env.*
+service-account.json
+*-service-account.json
+tmp/
+coverage.out
+intania-shop-api

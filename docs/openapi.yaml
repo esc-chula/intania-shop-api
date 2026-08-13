@@ -1,0 +1,1014 @@
+openapi: 3.1.0
+info:
+  title: Intania Shop API
+  version: 1.0.0
+  description: |
+    Backend API for the ESC Chula Intania Shop.
+    Identity comes from a JWT. Operations described as Admin only require the ADMIN role.
+servers:
+  - url: /
+    description: Same host as this documentation
+tags:
+  - { name: Service }
+  - { name: Authentication }
+  - { name: Products }
+  - { name: Cart }
+  - { name: Favorites }
+  - { name: Orders }
+  - { name: Content }
+  - { name: Inventory }
+  - { name: Uploads }
+paths:
+  /:
+    get:
+      operationId: getServiceName
+      tags: [Service]
+      summary: Get service name
+      responses:
+        "200":
+          description: Service name
+          content:
+            text/plain:
+              schema: { type: string, example: intania-shop-api }
+  /health:
+    get:
+      operationId: getHealth
+      tags: [Service]
+      summary: Check service and database health
+      responses:
+        "200":
+          description: Healthy
+          content:
+            text/plain:
+              schema: { type: string, const: ok }
+        "503":
+          description: Database unavailable
+          content:
+            text/plain:
+              schema: { type: string, const: unavailable }
+  /auth/google:
+    get:
+      operationId: startGoogleOAuth
+      tags: [Authentication]
+      summary: Start Google OAuth with PKCE
+      description: Returns the Google authorization URL and sets an OAuth state cookie.
+      responses:
+        "200": { $ref: "#/components/responses/AuthStart" }
+        "500": { $ref: "#/components/responses/Error" }
+  /auth/google/redirect:
+    get:
+      operationId: redirectToGoogleOAuth
+      tags: [Authentication]
+      summary: Redirect to Google OAuth
+      responses:
+        "307":
+          description: Temporary redirect to Google
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        "500": { $ref: "#/components/responses/Error" }
+  /auth/google/callback:
+    get:
+      operationId: completeGoogleOAuth
+      tags: [Authentication]
+      summary: Complete Google OAuth and issue a JWT
+      parameters:
+        - { name: code, in: query, schema: { type: string }, description: Required on a successful callback }
+        - { name: state, in: query, schema: { type: string }, description: Required on a successful callback }
+        - { name: error, in: query, schema: { type: string } }
+        - { name: error_description, in: query, schema: { type: string } }
+      responses:
+        "200": { $ref: "#/components/responses/Login" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /products:
+    get:
+      operationId: listProducts
+      tags: [Products]
+      summary: List products
+      parameters:
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+        - name: include_variants
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200": { $ref: "#/components/responses/ProductList" }
+        "500": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createProduct
+      tags: [Products]
+      summary: Create product
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/CreateProduct" }
+      responses:
+        "201": { $ref: "#/components/responses/ProductDetail" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /products/search:
+    get:
+      operationId: searchProducts
+      tags: [Products]
+      summary: Search products
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+      responses:
+        "200": { $ref: "#/components/responses/ProductSearch" }
+        "400": { $ref: "#/components/responses/Error" }
+  /products/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      operationId: getProduct
+      tags: [Products]
+      summary: Get product details
+      responses:
+        "200": { $ref: "#/components/responses/ProductDetail" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateProduct
+      tags: [Products]
+      summary: Update product
+      description: Admin only. Supplied fields replace existing values.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/UpdateProduct" }
+      responses:
+        "200": { $ref: "#/components/responses/ProductDetail" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteProduct
+      tags: [Products]
+      summary: Delete product
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Product deleted }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /products/{id}/variants:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      operationId: createProductVariant
+      tags: [Products]
+      summary: Create product variant
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/Variant" }
+      responses:
+        "201": { $ref: "#/components/responses/Variant" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /variants/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    put:
+      operationId: updateVariant
+      tags: [Products]
+      summary: Update product variant
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/Variant" }
+      responses:
+        "200": { $ref: "#/components/responses/Variant" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteVariant
+      tags: [Products]
+      summary: Delete product variant
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Variant deleted }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /cart:
+    get:
+      operationId: getCart
+      tags: [Cart]
+      summary: Get the caller cart
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/Cart" }
+        "401": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+  /cart/items:
+    put:
+      operationId: addCartItem
+      tags: [Cart]
+      summary: Add an item to the caller cart
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddCartItemRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AddCartItem" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /favorites:
+    put:
+      operationId: addFavorite
+      tags: [Favorites]
+      summary: Add a product to the caller favorites
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddFavoriteRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/AddFavorite" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [Orders]
+      summary: List orders visible to the caller
+      description: Users see their own orders; administrators see all orders.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/OrderList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createOrder
+      tags: [Orders]
+      summary: Create an order for the caller
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrderRequest" }
+      responses:
+        "201": { $ref: "#/components/responses/Order" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+  /orders/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      operationId: getOrder
+      tags: [Orders]
+      summary: Get an order visible to the caller
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/Order" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateOrder
+      tags: [Orders]
+      summary: Update an order
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOrderRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Order" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteOrder
+      tags: [Orders]
+      summary: Delete an order
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Order deleted }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /promos:
+    get:
+      operationId: listPromos
+      tags: [Content]
+      summary: List promotions
+      responses:
+        "200": { $ref: "#/components/responses/PromoList" }
+        "500": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createPromo
+      tags: [Content]
+      summary: Create a promotion
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/CreateContent" }
+      responses:
+        "201": { $ref: "#/components/responses/Promo" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /promos/active:
+    get:
+      operationId: listActivePromos
+      tags: [Content]
+      summary: List active promotions
+      responses:
+        "200": { $ref: "#/components/responses/PromoList" }
+        "500": { $ref: "#/components/responses/Error" }
+  /promos/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      operationId: getPromo
+      tags: [Content]
+      summary: Get a promotion
+      responses:
+        "200": { $ref: "#/components/responses/Promo" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updatePromo
+      tags: [Content]
+      summary: Update a promotion
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/UpdateContent" }
+      responses:
+        "200": { $ref: "#/components/responses/Promo" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deletePromo
+      tags: [Content]
+      summary: Delete a promotion
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Promotion deleted }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /banners:
+    get:
+      operationId: listBanners
+      tags: [Content]
+      summary: List banners
+      responses:
+        "200": { $ref: "#/components/responses/BannerList" }
+        "500": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createBanner
+      tags: [Content]
+      summary: Create a banner
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/CreateContent" }
+      responses:
+        "201": { $ref: "#/components/responses/Banner" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /banners/active:
+    get:
+      operationId: listActiveBanners
+      tags: [Content]
+      summary: List active banners
+      responses:
+        "200": { $ref: "#/components/responses/BannerList" }
+        "500": { $ref: "#/components/responses/Error" }
+  /banners/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      operationId: getBanner
+      tags: [Content]
+      summary: Get a banner
+      responses:
+        "200": { $ref: "#/components/responses/Banner" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: updateBanner
+      tags: [Content]
+      summary: Update a banner
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/UpdateContent" }
+      responses:
+        "200": { $ref: "#/components/responses/Banner" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteBanner
+      tags: [Content]
+      summary: Delete a banner
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Banner deleted }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /products/{id}/stock/adjust:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    post:
+      operationId: adjustProductStock
+      tags: [Inventory]
+      summary: Adjust product or variant stock
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdjustStockRequest" }
+      responses:
+        "201": { $ref: "#/components/responses/StockTransaction" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /products/{id}/stock/transactions:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      operationId: listProductStockTransactions
+      tags: [Inventory]
+      summary: List product stock history
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }]
+      responses:
+        "200": { $ref: "#/components/responses/StockTransactionList" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /variants/{id}/stock/transactions:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      operationId: listVariantStockTransactions
+      tags: [Inventory]
+      summary: List variant stock history
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }]
+      responses:
+        "200": { $ref: "#/components/responses/StockTransactionList" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /stock/transactions:
+    get:
+      operationId: listStockTransactions
+      tags: [Inventory]
+      summary: List all stock history
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }]
+      responses:
+        "200": { $ref: "#/components/responses/StockTransactionList" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /stock/bulk-reduction:
+    post:
+      operationId: bulkReduceStock
+      tags: [Inventory]
+      summary: Reduce stock for multiple items
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkStockReductionRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/BulkStockReduction" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /upload/product-images:
+    post:
+      operationId: uploadProductImages
+      tags: [Uploads]
+      summary: Upload product images
+      description: Admin only. Maximum request size is 100 MiB.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/Files" }
+      responses:
+        "200": { $ref: "#/components/responses/UploadMany" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /upload/product-videos:
+    post:
+      operationId: uploadProductVideos
+      tags: [Uploads]
+      summary: Upload product videos
+      description: Admin only. Maximum request size is 100 MiB.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/Files" }
+      responses:
+        "200": { $ref: "#/components/responses/UploadMany" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+  /stock/upload-proof-images:
+    post:
+      operationId: uploadStockProofImage
+      tags: [Uploads]
+      summary: Upload one stock proof image
+      description: Admin only. Maximum request size is 10 MiB.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200": { $ref: "#/components/responses/UploadOne" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, format: int32, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, format: int32, minimum: 1, default: 10 }
+  requestBodies:
+    CreateProduct:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CreateProductRequest" }
+    UpdateProduct:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProductInput" }
+    Variant:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/VariantInput" }
+    CreateContent:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CreateContentRequest" }
+    UpdateContent:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ContentInput" }
+    Files:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [files]
+            properties:
+              files:
+                type: array
+                minItems: 1
+                items: { type: string, format: binary }
+  responses:
+    Error:
+      description: Request failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorResponse" }
+    AuthStart: { description: OAuth flow started, content: { application/json: { schema: { $ref: "#/components/schemas/AuthStartEnvelope" } } } }
+    Login: { description: Authentication completed, content: { application/json: { schema: { $ref: "#/components/schemas/LoginEnvelope" } } } }
+    ProductList: { description: Paginated products, content: { application/json: { schema: { $ref: "#/components/schemas/ProductListEnvelope" } } } }
+    ProductSearch: { description: Matching products, content: { application/json: { schema: { $ref: "#/components/schemas/ProductSearchEnvelope" } } } }
+    ProductDetail: { description: Product details, content: { application/json: { schema: { $ref: "#/components/schemas/ProductDetailEnvelope" } } } }
+    Variant: { description: Product variant, content: { application/json: { schema: { $ref: "#/components/schemas/VariantEnvelope" } } } }
+    Cart: { description: Caller cart, content: { application/json: { schema: { $ref: "#/components/schemas/CartEnvelope" } } } }
+    AddCartItem: { description: Cart item added, content: { application/json: { schema: { $ref: "#/components/schemas/AddCartItemEnvelope" } } } }
+    AddFavorite: { description: Favorite added, content: { application/json: { schema: { $ref: "#/components/schemas/AddFavoriteEnvelope" } } } }
+    Order: { description: Order, content: { application/json: { schema: { $ref: "#/components/schemas/OrderEnvelope" } } } }
+    OrderList: { description: Orders, content: { application/json: { schema: { $ref: "#/components/schemas/OrderListEnvelope" } } } }
+    Promo: { description: Promotion, content: { application/json: { schema: { $ref: "#/components/schemas/PromoEnvelope" } } } }
+    PromoList: { description: Promotions, content: { application/json: { schema: { $ref: "#/components/schemas/PromoListEnvelope" } } } }
+    Banner: { description: Banner, content: { application/json: { schema: { $ref: "#/components/schemas/BannerEnvelope" } } } }
+    BannerList: { description: Banners, content: { application/json: { schema: { $ref: "#/components/schemas/BannerListEnvelope" } } } }
+    StockTransaction: { description: Stock transaction, content: { application/json: { schema: { $ref: "#/components/schemas/StockTransactionEnvelope" } } } }
+    StockTransactionList: { description: Stock transactions, content: { application/json: { schema: { $ref: "#/components/schemas/StockTransactionListEnvelope" } } } }
+    BulkStockReduction: { description: Bulk reduction result, content: { application/json: { schema: { $ref: "#/components/schemas/BulkStockReductionEnvelope" } } } }
+    UploadMany: { description: Uploaded objects, content: { application/json: { schema: { $ref: "#/components/schemas/UploadManyEnvelope" } } } }
+    UploadOne: { description: Uploaded image, content: { application/json: { schema: { $ref: "#/components/schemas/UploadOneEnvelope" } } } }
+  schemas:
+    SuccessBase:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, const: true }
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, const: false }
+        error: { type: string, example: Product not found }
+    User:
+      type: object
+      required: [id, full_name, email, role, profile_picture]
+      properties:
+        id: { type: integer, format: int64 }
+        full_name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [USER, ADMIN] }
+        profile_picture: { type: [string, "null"], format: uri }
+    ProductStatus: { type: string, enum: [Preorder, InStock, OutOfStock] }
+    ProductType: { type: string, enum: [Single, Multiple] }
+    PickupMethods:
+      type: object
+      properties:
+        self_pickup: { type: boolean }
+        home_delivery: { type: boolean }
+    ProductListItem:
+      type: object
+      required: [product_id, name, base_price, status, images]
+      properties:
+        product_id: { type: integer, format: int64 }
+        name: { type: string }
+        base_price: { type: string, example: "299.00" }
+        status: { $ref: "#/components/schemas/ProductStatus" }
+        category: { type: [string, "null"] }
+        images: { type: array, items: { type: [string, "null"], format: uri } }
+        min_order: { type: [integer, "null"], format: int32 }
+        max_order: { type: [integer, "null"], format: int32 }
+    Variant:
+      type: object
+      required: [variant_id, product_id]
+      properties:
+        variant_id: { type: integer, format: int64 }
+        product_id: { type: integer, format: int64 }
+        size: { type: [string, "null"] }
+        color: { type: [string, "null"] }
+        stock_quantity: { type: [integer, "null"], format: int32 }
+        price: { type: [string, "null"], example: "329.00" }
+    ProductDetail:
+      allOf:
+        - { $ref: "#/components/schemas/ProductListItem" }
+        - type: object
+          required: [variants]
+          properties:
+            description: { type: [string, "null"] }
+            stock_quantity: { type: [integer, "null"], format: int32 }
+            preview_video: { type: [string, "null"], format: uri }
+            shipping: { type: array, items: { type: [string, "null"] } }
+            product_type: { oneOf: [{ $ref: "#/components/schemas/ProductType" }, { type: "null" }] }
+            size_chart: { type: [string, "null"], format: uri }
+            pickup_methods: { oneOf: [{ $ref: "#/components/schemas/PickupMethods" }, { type: "null" }] }
+            pickup_location: { type: [string, "null"] }
+            shipping_fee: { type: [string, "null"] }
+            sku: { type: [string, "null"] }
+            product_code: { type: [string, "null"] }
+            created_at: { type: [string, "null"], format: date-time }
+            updated_at: { type: [string, "null"], format: date-time }
+            variants: { type: array, items: { $ref: "#/components/schemas/Variant" } }
+    ProductInput:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: [string, "null"] }
+        base_price: { type: string, example: "299.00" }
+        status: { $ref: "#/components/schemas/ProductStatus" }
+        category: { type: [string, "null"] }
+        stock_quantity: { type: [integer, "null"], format: int32 }
+        images: { type: array, items: { type: [string, "null"], format: uri } }
+        preview_video: { type: [string, "null"], format: uri }
+        shipping: { type: array, items: { type: [string, "null"] } }
+        product_type: { $ref: "#/components/schemas/ProductType" }
+        min_order: { type: [integer, "null"], format: int32 }
+        max_order: { type: [integer, "null"], format: int32 }
+        size_chart: { type: [string, "null"], format: uri }
+        pickup_methods: { $ref: "#/components/schemas/PickupMethods" }
+        pickup_location: { type: [string, "null"] }
+        shipping_fee: { type: [string, "null"] }
+        sku: { type: [string, "null"] }
+        product_code: { type: [string, "null"] }
+        variants: { type: array, items: { $ref: "#/components/schemas/VariantInput" } }
+    CreateProductRequest:
+      allOf:
+        - { $ref: "#/components/schemas/ProductInput" }
+        - { type: object, required: [name, base_price] }
+    VariantInput:
+      type: object
+      properties:
+        size: { type: [string, "null"] }
+        color: { type: [string, "null"] }
+        stock_quantity: { type: [integer, "null"], format: int32 }
+        price: { type: [string, "null"] }
+    ProductListData:
+      type: object
+      required: [products, total, page, page_size, total_pages]
+      properties:
+        products: { type: array, items: { oneOf: [{ $ref: "#/components/schemas/ProductListItem" }, { $ref: "#/components/schemas/ProductDetail" }] } }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+        total_pages: { type: integer, format: int32 }
+    AddCartItemRequest:
+      type: object
+      required: [variant_id, quantity]
+      properties:
+        variant_id: { type: integer, format: int64, minimum: 1 }
+        quantity: { type: integer, format: int32, minimum: 1 }
+    CartItem:
+      type: object
+      properties:
+        item_id: { type: integer, format: int64 }
+        cart_id: { type: integer, format: int64 }
+        variant_id: { type: integer, format: int64 }
+        quantity: { type: integer, format: int32 }
+    Cart:
+      type: object
+      required: [cart_id, user_id, items]
+      properties:
+        cart_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              item_id: { type: integer, format: int64 }
+              cart_id: { type: integer, format: int64 }
+              variant_id: { type: integer, format: int64 }
+              quantity: { type: integer, format: int32 }
+              available_stock: { type: [integer, "null"], format: int32 }
+              variant: { type: object, additionalProperties: true }
+    AddFavoriteRequest:
+      type: object
+      required: [product_id]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+    AddFavoriteData:
+      type: object
+      properties:
+        user_id: { type: integer, format: int64 }
+        product_id: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        message: { type: string }
+    DeliveryType: { type: string, enum: [PICKUP, SHIPPING] }
+    OrderStatus: { type: string, enum: [CART, PENDING_PAYMENT, CONFIRMED, SHIPPING, COMPLETED] }
+    CreateOrderRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [variant_id, quantity]
+            properties:
+              variant_id: { type: integer, format: int64, minimum: 1 }
+              quantity: { type: integer, format: int32, minimum: 1 }
+        delivery_type: { oneOf: [{ $ref: "#/components/schemas/DeliveryType" }, { type: "null" }] }
+        shipping_address: { type: [string, "null"] }
+        delivery_fee: { type: [string, "null"] }
+    UpdateOrderRequest:
+      type: object
+      properties:
+        order_status: { $ref: "#/components/schemas/OrderStatus" }
+        delivery_type: { $ref: "#/components/schemas/DeliveryType" }
+        shipping_address: { type: [string, "null"] }
+        tracking_number: { type: [string, "null"] }
+    Order:
+      type: object
+      required: [order_id, order_code, user_id, total_amount, delivery_fee, order_status, created_at, items]
+      properties:
+        order_id: { type: integer, format: int64 }
+        order_code: { type: string }
+        user_id: { type: integer, format: int64 }
+        total_amount: { type: string }
+        delivery_fee: { type: string }
+        order_status: { $ref: "#/components/schemas/OrderStatus" }
+        delivery_type: { oneOf: [{ $ref: "#/components/schemas/DeliveryType" }, { type: "null" }] }
+        shipping_address: { type: [string, "null"] }
+        tracking_number: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        items: { type: array, items: { type: object, additionalProperties: true } }
+    ContentInput:
+      type: object
+      properties:
+        img_url: { type: string, format: uri }
+        link_url: { type: [string, "null"], format: uri }
+        is_active: { type: boolean }
+    CreateContentRequest:
+      allOf:
+        - { $ref: "#/components/schemas/ContentInput" }
+        - { type: object, required: [img_url] }
+    Promo:
+      type: object
+      properties:
+        promo_id: { type: integer, format: int64 }
+        img_url: { type: string, format: uri }
+        link_url: { type: [string, "null"], format: uri }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+    Banner:
+      type: object
+      properties:
+        banner_id: { type: integer, format: int64 }
+        img_url: { type: string, format: uri }
+        link_url: { type: [string, "null"], format: uri }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+    AdjustStockRequest:
+      type: object
+      required: [quantity_change, reason]
+      properties:
+        variant_id: { type: [integer, "null"], format: int64 }
+        quantity_change: { type: integer, format: int32, not: { const: 0 } }
+        reason: { type: string }
+        notes: { type: [string, "null"] }
+        reference_type: { type: [string, "null"] }
+        reference_id: { type: [integer, "null"], format: int64 }
+        gender: { type: [string, "null"] }
+        confirmation_image: { type: [string, "null"], format: uri }
+    StockTransaction:
+      type: object
+      properties:
+        transaction_id: { type: integer, format: int64 }
+        product_id: { type: [integer, "null"], format: int64 }
+        variant_id: { type: [integer, "null"], format: int64 }
+        transaction_type: { type: string }
+        quantity_change: { type: integer, format: int32 }
+        quantity_before: { type: integer, format: int32 }
+        quantity_after: { type: integer, format: int32 }
+        reason: { type: [string, "null"] }
+        reference_type: { type: [string, "null"] }
+        reference_id: { type: [integer, "null"], format: int64 }
+        created_by: { type: [string, "null"] }
+        gender: { type: [string, "null"] }
+        confirmation_image: { type: [string, "null"], format: uri }
+        payment_type: { type: [string, "null"] }
+        total_money_receive: { type: [string, "null"] }
+        product_name: { type: string }
+        product_price: { type: string }
+        earned: { type: number }
+        created_at: { type: string, format: date-time }
+    StockTransactionList:
+      type: object
+      properties:
+        transactions: { type: array, items: { $ref: "#/components/schemas/StockTransaction" } }
+        total: { type: integer, format: int64 }
+        page: { type: integer, format: int32 }
+        page_size: { type: integer, format: int32 }
+        total_pages: { type: integer, format: int32 }
+        total_earned: { type: number }
+    BulkStockReductionRequest:
+      type: object
+      required: [reason, operator, gender, payment_type, total_money_receive, items]
+      properties:
+        reason: { type: string, minLength: 1 }
+        operator: { type: string, minLength: 1 }
+        remark: { type: [string, "null"] }
+        gender: { type: string, minLength: 1 }
+        payment_type: { type: string }
+        total_money_receive: { type: string, example: "1000.00" }
+        confirmation_image: { type: [string, "null"], format: uri }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [product_id, quantity]
+            properties:
+              product_id: { type: integer, format: int64, minimum: 1 }
+              variant_id: { type: [integer, "null"], format: int64 }
+              quantity: { type: integer, format: int32, minimum: 1 }
+    BulkStockReductionData:
+      type: object
+      properties:
+        successful: { type: array, items: { type: object, additionalProperties: true } }
+        failed: { type: array, items: { type: object, additionalProperties: true } }
+        total_items: { type: integer }
+        successful_count: { type: integer }
+        failed_count: { type: integer }
+    UploadedObject:
+      type: object
+      required: [url, object_name]
+      properties:
+        url: { type: string, format: uri }
+        object_name: { type: string }
+    AuthStartEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: object, required: [auth_url], properties: { auth_url: { type: string, format: uri } } } } }
+    LoginEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: object, required: [user, token, message], properties: { user: { $ref: "#/components/schemas/User" }, token: { type: string }, message: { type: string } } } } }
+    ProductListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProductListData" } } }
+    ProductSearchEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: array, items: { $ref: "#/components/schemas/ProductListItem" } } } }
+    ProductDetailEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProductDetail" } } }
+    VariantEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Variant" } } }
+    CartEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Cart" } } }
+    AddCartItemEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: object, properties: { item: { $ref: "#/components/schemas/CartItem" }, message: { type: string } } } } }
+    AddFavoriteEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/AddFavoriteData" } } }
+    OrderEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Order" } } }
+    OrderListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: array, items: { $ref: "#/components/schemas/Order" } } } }
+    PromoEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Promo" } } }
+    PromoListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: array, items: { $ref: "#/components/schemas/Promo" } } } }
+    BannerEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Banner" } } }
+    BannerListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: array, items: { $ref: "#/components/schemas/Banner" } } } }
+    StockTransactionEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/StockTransaction" } } }
+    StockTransactionListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/StockTransactionList" } } }
+    BulkStockReductionEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/BulkStockReductionData" } } }
+    UploadManyEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: object, properties: { uploads: { type: array, items: { $ref: "#/components/schemas/UploadedObject" } } } } } }
+    UploadOneEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { type: object, properties: { image: { $ref: "#/components/schemas/UploadedObject" } } } } }

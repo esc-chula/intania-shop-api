@@ -1,0 +1,13 @@
+root = "."
+env_files = [".env"]
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/intania-shop-api ."
+  entrypoint = ["./tmp/intania-shop-api", "serve"]
+  include_ext = ["go", "sql"]
+  exclude_dir = ["tmp"]
+  delay = 500
+
+[log]
+  time = true
