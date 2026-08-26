@@ -19,6 +19,21 @@ const (
 	ProjectStatusCompleted ProjectStatus = "COMPLETED"
 )
 
+// ProjectStatusFor returns the project status for a calendar date.
+func ProjectStatusFor(startDate Date, endDate Date, today Date) ProjectStatus {
+	// assuming that endDate >= startDate
+
+	if today.Before(startDate.Time) {
+		return ProjectStatusNotStarted
+	}
+
+	if today.Before(endDate.Time) {
+		return ProjectStatusActive
+	}
+
+	return ProjectStatusCompleted
+}
+
 // Project is a time-bounded project with status and order count derived from its dates and linked orders.
 type Project struct {
 	ProjectID   int64         `json:"project_id"`
