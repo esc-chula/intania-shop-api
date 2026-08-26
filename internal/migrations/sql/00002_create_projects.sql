@@ -18,8 +18,6 @@ ALTER TABLE orders
 CREATE INDEX idx_orders_project_id ON orders(project_id);
 
 -- +goose Down
-DROP INDEX idx_orders_project_id;
-
-ALTER TABLE orders DROP COLUMN project_id;
-
-DROP TABLE projects;
+DROP INDEX IF EXISTS idx_orders_project_id;
+ALTER TABLE orders DROP COLUMN IF EXISTS project_id;
+DROP TABLE IF EXISTS projects;
