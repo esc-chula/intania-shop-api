@@ -2,11 +2,6 @@ package models
 
 import "time"
 
-// Date represents a calendar date without a time of day.
-type Date struct {
-	time.Time
-}
-
 // ProjectStatus is the derived lifecycle state of a project.
 type ProjectStatus string
 
@@ -27,11 +22,11 @@ func ProjectStatusFor(startDate Date, endDate Date, today Date) ProjectStatus {
 		return ProjectStatusNotStarted
 	}
 
-	if today.Before(endDate.Time) {
-		return ProjectStatusActive
+	if today.After(endDate.Time) {
+		return ProjectStatusCompleted
 	}
 
-	return ProjectStatusCompleted
+	return ProjectStatusActive
 }
 
 // Project is a time-bounded project with status and order count derived from its dates and linked orders.
