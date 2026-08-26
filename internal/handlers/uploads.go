@@ -21,7 +21,6 @@ func NewUploadHandler(uploader storage.Uploader) *UploadHandler {
 
 func (h *UploadHandler) Register(router chi.Router) {
 	router.Post("/upload/product-images", func(w http.ResponseWriter, r *http.Request) { h.uploadMany(w, r, "products/images", true) })
-	router.Post("/upload/product-videos", func(w http.ResponseWriter, r *http.Request) { h.uploadMany(w, r, "products/videos", false) })
 	router.Post("/stock/upload-proof-images", func(w http.ResponseWriter, r *http.Request) { h.uploadOne(w, r, "stock/proof", true) })
 }
 func (h *UploadHandler) uploadMany(w http.ResponseWriter, r *http.Request, folder string, imagesOnly bool) {

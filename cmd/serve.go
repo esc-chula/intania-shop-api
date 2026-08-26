@@ -58,11 +58,6 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	authHandler := handlers.NewAuthHandler(oauth, usecases.NewAuthService(users, tokens))
 	productHandler := handlers.NewProductHandler(usecases.NewProductService(repositories.NewProductRepository(pool)))
 	productAdminHandler := handlers.NewProductAdminHandler(usecases.NewProductAdminService(repositories.NewProductRepository(pool)))
-	contentHandler := handlers.NewContentHandler(usecases.NewContentService(repositories.NewContentRepository(pool)))
-	contentAdminHandler := handlers.NewContentAdminHandler(usecases.NewContentAdminService(repositories.NewContentRepository(pool)))
-	cartHandler := handlers.NewCartHandler(usecases.NewCartService(repositories.NewCartRepository(pool)))
-	favoriteHandler := handlers.NewFavoriteHandler(usecases.NewFavoriteService(repositories.NewFavoriteRepository(pool)))
-	orderHandler := handlers.NewOrderHandler(usecases.NewOrderService(repositories.NewOrderRepository(pool)))
 	inventoryHandler := handlers.NewInventoryHandler(usecases.NewInventoryService(repositories.NewInventoryRepository(pool)))
 	uploadHandler := handlers.NewUploadHandler(uploader)
 
@@ -73,11 +68,6 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		AuthHandler:         authHandler,
 		ProductHandler:      productHandler,
 		ProductAdminHandler: productAdminHandler,
-		ContentHandler:      contentHandler,
-		ContentAdminHandler: contentAdminHandler,
-		CartHandler:         cartHandler,
-		FavoriteHandler:     favoriteHandler,
-		OrderHandler:        orderHandler,
 		InventoryHandler:    inventoryHandler,
 		UploadHandler:       uploadHandler,
 		TokenVerifier:       tokens,

@@ -20,7 +20,7 @@ func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
 }
 
 func (repository *ProductRepository) List(ctx context.Context, offset, limit int32) ([]models.ProductListItem, int64, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images, min_order, max_order FROM products ORDER BY id DESC OFFSET $1 LIMIT $2`, offset, limit)
+	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images FROM products ORDER BY id DESC OFFSET $1 LIMIT $2`, offset, limit)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list products: %w", err)
 	}
@@ -29,7 +29,7 @@ func (repository *ProductRepository) List(ctx context.Context, offset, limit int
 	for rows.Next() {
 		var item models.ProductListItem
 		var status string
-		if err := rows.Scan(&item.ProductID, &item.Name, &item.BasePrice, &status, &item.Category, &item.Images, &item.MinOrder, &item.MaxOrder); err != nil {
+		if err := rows.Scan(&item.ProductID, &item.Name, &item.BasePrice, &status, &item.Category, &item.Images); err != nil {
 			return nil, 0, fmt.Errorf("scan product list item: %w", err)
 		}
 		item.Status = publicStatus(status)
@@ -46,7 +46,7 @@ func (repository *ProductRepository) List(ctx context.Context, offset, limit int
 }
 
 func (repository *ProductRepository) Search(ctx context.Context, query string, offset, limit int32) ([]models.ProductListItem, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images, min_order, max_order FROM products WHERE name ILIKE '%' || $1 || '%' ORDER BY id DESC OFFSET $2 LIMIT $3`, query, offset, limit)
+	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images FROM products WHERE name ILIKE '%' || $1 || '%' ORDER BY id DESC OFFSET $2 LIMIT $3`, query, offset, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search products: %w", err)
 	}
@@ -55,7 +55,7 @@ func (repository *ProductRepository) Search(ctx context.Context, query string, o
 	for rows.Next() {
 		var item models.ProductListItem
 		var status string
-		if err := rows.Scan(&item.ProductID, &item.Name, &item.BasePrice, &status, &item.Category, &item.Images, &item.MinOrder, &item.MaxOrder); err != nil {
+		if err := rows.Scan(&item.ProductID, &item.Name, &item.BasePrice, &status, &item.Category, &item.Images); err != nil {
 			return nil, fmt.Errorf("scan searched product: %w", err)
 		}
 		item.Status = publicStatus(status)
@@ -71,8 +71,7 @@ func (repository *ProductRepository) Detail(ctx context.Context, productID int64
 	var product models.ProductDetail
 	var status string
 	var productType *string
-	var methods []byte
-	err := repository.pool.QueryRow(ctx, `SELECT id, name, description, price::text, status::text, category, stock_quantity, images, preview_video, shipping, product_type::text, min_order, max_order, size_chart, pickup_methods, pickup_location, shipping_fee::text, sku, product_code, created_at, updated_at FROM products WHERE id = $1`, productID).Scan(&product.ProductID, &product.Name, &product.Description, &product.BasePrice, &status, &product.Category, &product.StockQuantity, &product.Images, &product.PreviewVideo, &product.Shipping, &productType, &product.MinOrder, &product.MaxOrder, &product.SizeChart, &methods, &product.PickupLocation, &product.ShippingFee, &product.SKU, &product.ProductCode, &product.CreatedAt, &product.UpdatedAt)
+	err := repository.pool.QueryRow(ctx, `SELECT id, name, description, price::text, status::text, category, stock_quantity, images, product_type::text, sku, product_code, created_at, updated_at FROM products WHERE id = $1`, productID).Scan(&product.ProductID, &product.Name, &product.Description, &product.BasePrice, &status, &product.Category, &product.StockQuantity, &product.Images, &productType, &product.SKU, &product.ProductCode, &product.CreatedAt, &product.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.ProductDetail{}, ErrProductNotFound
 	}
@@ -83,11 +82,6 @@ func (repository *ProductRepository) Detail(ctx context.Context, productID int64
 	if productType != nil {
 		value := publicType(*productType)
 		product.ProductType = &value
-	}
-	var decodeErr error
-	product.PickupMethods, decodeErr = models.DecodePickupMethods(methods)
-	if decodeErr != nil {
-		return models.ProductDetail{}, fmt.Errorf("decode pickup methods: %w", decodeErr)
 	}
 	rows, err := repository.pool.Query(ctx, `SELECT variant_id, product_id, size, color, stock_quantity, price::text FROM variants WHERE product_id = $1 ORDER BY variant_id`, productID)
 	if err != nil {

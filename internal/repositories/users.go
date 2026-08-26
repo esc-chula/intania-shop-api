@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// UserRepository persists user accounts in the legacy-compatible users table.
+// UserRepository persists OAuth-backed user accounts.
 type UserRepository struct {
 	pool *pgxpool.Pool
 }
@@ -56,8 +56,8 @@ func (repository *UserRepository) UpsertGoogleUser(ctx context.Context, googleUs
 		}
 	} else {
 		user, _, err = scanUser(ctx, tx, `
-			INSERT INTO users (full_name, email, password_hash, role, google_id, profile_picture)
-			VALUES ($1, $2, '', 'USER', $3, $4)
+			INSERT INTO users (full_name, email, role, google_id, profile_picture)
+			VALUES ($1, $2, 'USER', $3, $4)
 			RETURNING user_id, COALESCE(full_name, ''), email, role::text, profile_picture`, googleUser.Name, googleUser.Email, googleUser.ID, googleUser.Picture)
 		if err != nil {
 			return models.User{}, err

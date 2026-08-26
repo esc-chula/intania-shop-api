@@ -24,7 +24,7 @@ type AuthService struct {
 	tokens AccessTokenIssuer
 }
 
-// LoginResponse is the legacy-compatible success payload from Google sign-in.
+// LoginResponse is the success payload from Google sign-in.
 type LoginResponse struct {
 	User    models.User `json:"user"`
 	Token   string      `json:"token"`

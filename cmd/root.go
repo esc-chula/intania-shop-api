@@ -19,7 +19,7 @@ func newRootCommand() *cobra.Command {
 		SilenceUsage:  true,
 		RunE:          runServe,
 	}
-	cmd.AddCommand(newServeCommand(), newMigrateCommand(), newAdoptBaselineCommand())
+	cmd.AddCommand(newServeCommand(), newMigrateCommand())
 	return cmd
 }
 

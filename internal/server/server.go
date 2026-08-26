@@ -27,11 +27,6 @@ type Dependencies struct {
 	AuthHandler         *handlers.AuthHandler
 	ProductHandler      *handlers.ProductHandler
 	ProductAdminHandler *handlers.ProductAdminHandler
-	ContentHandler      *handlers.ContentHandler
-	ContentAdminHandler *handlers.ContentAdminHandler
-	CartHandler         *handlers.CartHandler
-	FavoriteHandler     *handlers.FavoriteHandler
-	OrderHandler        *handlers.OrderHandler
 	InventoryHandler    *handlers.InventoryHandler
 	UploadHandler       *handlers.UploadHandler
 	TokenVerifier       middlewares.TokenVerifier
@@ -65,34 +60,14 @@ func NewHandler(dependencies Dependencies) http.Handler {
 	if dependencies.AuthHandler != nil {
 		dependencies.AuthHandler.Register(router)
 	}
-	if dependencies.ProductHandler != nil {
-		dependencies.ProductHandler.Register(router)
-	}
-	if dependencies.ContentHandler != nil {
-		dependencies.ContentHandler.Register(router)
-	}
-
 	if dependencies.TokenVerifier != nil {
 		authenticated := router.With(middlewares.Authenticate(dependencies.TokenVerifier))
-		if dependencies.CartHandler != nil {
-			dependencies.CartHandler.Register(authenticated)
-		}
-		if dependencies.FavoriteHandler != nil {
-			dependencies.FavoriteHandler.Register(authenticated)
-		}
-		if dependencies.OrderHandler != nil {
-			dependencies.OrderHandler.Register(authenticated)
-		}
-
 		admin := authenticated.With(middlewares.RequireRole(models.RoleAdmin))
+		if dependencies.ProductHandler != nil {
+			dependencies.ProductHandler.Register(admin)
+		}
 		if dependencies.ProductAdminHandler != nil {
 			dependencies.ProductAdminHandler.Register(admin)
-		}
-		if dependencies.ContentAdminHandler != nil {
-			dependencies.ContentAdminHandler.Register(admin)
-		}
-		if dependencies.OrderHandler != nil {
-			dependencies.OrderHandler.RegisterAdmin(admin)
 		}
 		if dependencies.InventoryHandler != nil {
 			dependencies.InventoryHandler.Register(admin)

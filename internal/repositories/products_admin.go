@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
@@ -25,15 +24,8 @@ func (r *ProductRepository) Create(ctx context.Context, input models.ProductInpu
 	if input.ProductType != nil {
 		productType = databaseType(*input.ProductType)
 	}
-	var methods []byte
-	if input.PickupMethods != nil {
-		methods, e = json.Marshal(input.PickupMethods)
-		if e != nil {
-			return models.ProductDetail{}, fmt.Errorf("marshal pickup methods: %w", e)
-		}
-	}
 	var id int64
-	e = tx.QueryRow(ctx, `INSERT INTO products(name,description,price,status,category,stock_quantity,images,preview_video,shipping,product_type,min_order,max_order,size_chart,pickup_methods,pickup_location,shipping_fee,sku,product_code) VALUES($1,$2,$3::numeric,$4::product_status,$5,$6,$7,$8,$9,$10::product_type,$11,$12,$13,$14,$15,$16::numeric,$17,$18) RETURNING id`, *input.Name, input.Description, *input.BasePrice, status, input.Category, input.StockQuantity, input.Images, input.PreviewVideo, input.Shipping, productType, input.MinOrder, input.MaxOrder, input.SizeChart, methods, input.PickupLocation, input.ShippingFee, input.SKU, input.ProductCode).Scan(&id)
+	e = tx.QueryRow(ctx, `INSERT INTO products(name,description,price,status,category,stock_quantity,images,product_type,sku,product_code) VALUES($1,$2,$3::numeric,$4::product_status,$5,$6,COALESCE($7,'{}'::text[]),$8::product_type,$9,$10) RETURNING id`, *input.Name, input.Description, *input.BasePrice, status, input.Category, input.StockQuantity, input.Images, productType, input.SKU, input.ProductCode).Scan(&id)
 	if e != nil {
 		return models.ProductDetail{}, fmt.Errorf("create product: %w", e)
 	}
@@ -96,14 +88,7 @@ func (r *ProductRepository) DeleteVariant(ctx context.Context, variantID int64) 
 }
 
 func (r *ProductRepository) Update(ctx context.Context, productID int64, input models.ProductInput) (models.ProductDetail, error) {
-	var methods []byte
 	var err error
-	if input.PickupMethods != nil {
-		methods, err = json.Marshal(input.PickupMethods)
-		if err != nil {
-			return models.ProductDetail{}, fmt.Errorf("marshal pickup methods: %w", err)
-		}
-	}
 	status := (*string)(nil)
 	if input.Status != nil {
 		value := databaseStatus(*input.Status)
@@ -114,7 +99,7 @@ func (r *ProductRepository) Update(ctx context.Context, productID int64, input m
 		value := databaseType(*input.ProductType)
 		productType = &value
 	}
-	tag, err := r.pool.Exec(ctx, `UPDATE products SET name=COALESCE($2,name),description=COALESCE($3,description),price=COALESCE($4::numeric,price),status=COALESCE($5::product_status,status),category=COALESCE($6,category),stock_quantity=COALESCE($7,stock_quantity),images=COALESCE($8,images),preview_video=COALESCE($9,preview_video),shipping=COALESCE($10,shipping),product_type=COALESCE($11::product_type,product_type),min_order=COALESCE($12,min_order),max_order=COALESCE($13,max_order),size_chart=COALESCE($14,size_chart),pickup_methods=COALESCE($15::jsonb,pickup_methods),pickup_location=COALESCE($16,pickup_location),shipping_fee=COALESCE($17::numeric,shipping_fee),sku=COALESCE($18,sku),product_code=COALESCE($19,product_code),updated_at=NOW() WHERE id=$1`, productID, input.Name, input.Description, input.BasePrice, status, input.Category, input.StockQuantity, input.Images, input.PreviewVideo, input.Shipping, productType, input.MinOrder, input.MaxOrder, input.SizeChart, methods, input.PickupLocation, input.ShippingFee, input.SKU, input.ProductCode)
+	tag, err := r.pool.Exec(ctx, `UPDATE products SET name=COALESCE($2,name),description=COALESCE($3,description),price=COALESCE($4::numeric,price),status=COALESCE($5::product_status,status),category=COALESCE($6,category),stock_quantity=COALESCE($7,stock_quantity),images=COALESCE($8,images),product_type=COALESCE($9::product_type,product_type),sku=COALESCE($10,sku),product_code=COALESCE($11,product_code),updated_at=NOW() WHERE id=$1`, productID, input.Name, input.Description, input.BasePrice, status, input.Category, input.StockQuantity, input.Images, productType, input.SKU, input.ProductCode)
 	if err != nil {
 		return models.ProductDetail{}, fmt.Errorf("update product: %w", err)
 	}

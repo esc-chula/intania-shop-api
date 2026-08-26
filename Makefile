@@ -34,7 +34,7 @@ dev:
 
 test-integration:
 	@test -n "$$TEST_DATABASE_URL" || (echo "TEST_DATABASE_URL is required"; exit 1)
-	TEST_DATABASE_URL="$$TEST_DATABASE_URL" go test -tags=integration -race ./internal/repositories
+	TEST_DATABASE_URL="$$TEST_DATABASE_URL" go test -p=1 -tags=integration -race ./internal/migrations ./internal/repositories
 
 test:
 	go test -race -cover ./...

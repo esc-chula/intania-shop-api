@@ -63,12 +63,8 @@ func (r *InventoryRepository) Adjust(ctx context.Context, productID int64, reque
 	if request.QuantityChange < 0 {
 		typ = "DECREMENT"
 	}
-	reason := request.Reason
-	if request.Notes != nil {
-		reason += ": " + *request.Notes
-	}
 	var out models.StockTransaction
-	e = tx.QueryRow(ctx, `INSERT INTO stock_transactions(product_id,variant_id,transaction_type,quantity_change,quantity_before,quantity_after,reason,reference_type,reference_id,created_by,gender,confirmation_image,payment_type,total_money_receive) VALUES($1,$2,$3::stock_transaction_type,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::payment_type,$14::numeric) RETURNING transaction_id,product_id,variant_id,transaction_type::text,quantity_change,quantity_before,quantity_after,reason,reference_type,reference_id,created_by,created_at`, pid, vid, typ, request.QuantityChange, before, after, reason, request.ReferenceType, request.ReferenceID, actor, request.Gender, request.ConfirmationImage, request.PaymentType, request.TotalMoneyReceive).Scan(&out.TransactionID, &out.ProductID, &out.VariantID, &out.TransactionType, &out.QuantityChange, &out.QuantityBefore, &out.QuantityAfter, &out.Reason, &out.ReferenceType, &out.ReferenceID, &out.CreatedBy, &out.CreatedAt)
+	e = tx.QueryRow(ctx, `INSERT INTO stock_transactions(product_id,variant_id,transaction_type,quantity_change,quantity_before,quantity_after,reason,notes,reference_type,reference_id,created_by,confirmation_image) VALUES($1,$2,$3::stock_transaction_type,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING transaction_id,product_id,variant_id,transaction_type::text,quantity_change,quantity_before,quantity_after,reason,notes,reference_type,reference_id,created_by,confirmation_image,created_at`, pid, vid, typ, request.QuantityChange, before, after, request.Reason, request.Notes, request.ReferenceType, request.ReferenceID, actor, request.ConfirmationImage).Scan(&out.TransactionID, &out.ProductID, &out.VariantID, &out.TransactionType, &out.QuantityChange, &out.QuantityBefore, &out.QuantityAfter, &out.Reason, &out.Notes, &out.ReferenceType, &out.ReferenceID, &out.CreatedBy, &out.ConfirmationImage, &out.CreatedAt)
 	if e != nil {
 		return models.StockTransaction{}, fmt.Errorf("record stock transaction: %w", e)
 	}
@@ -96,7 +92,7 @@ func (r *InventoryRepository) list(ctx context.Context, where string, args []any
 	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*)`+base+where, args...).Scan(&total); err != nil {
 		return models.StockTransactionListResponse{}, fmt.Errorf("count stock transactions: %w", err)
 	}
-	query := `SELECT st.transaction_id,st.product_id,st.variant_id,st.transaction_type::text,st.quantity_change,st.quantity_before,st.quantity_after,st.reason,st.reference_type,st.reference_id,st.created_by,st.gender,st.confirmation_image,st.payment_type::text,st.total_money_receive::text,st.created_at,COALESCE(p.name,vp.name),COALESCE(p.price::text,vp.price::text)` + base + where + ` ORDER BY st.transaction_id DESC OFFSET $` + fmt.Sprint(len(args)+1) + ` LIMIT $` + fmt.Sprint(len(args)+2)
+	query := `SELECT st.transaction_id,st.product_id,st.variant_id,st.transaction_type::text,st.quantity_change,st.quantity_before,st.quantity_after,st.reason,st.notes,st.reference_type,st.reference_id,st.created_by,st.confirmation_image,st.created_at,COALESCE(p.name,vp.name)` + base + where + ` ORDER BY st.transaction_id DESC OFFSET $` + fmt.Sprint(len(args)+1) + ` LIMIT $` + fmt.Sprint(len(args)+2)
 	queryArgs := append(append([]any{}, args...), offset, limit)
 	rows, err := r.pool.Query(ctx, query, queryArgs...)
 	if err != nil {
@@ -109,16 +105,8 @@ func (r *InventoryRepository) list(ctx context.Context, where string, args []any
 	}
 	for rows.Next() {
 		var tx models.StockTransaction
-		if err := rows.Scan(&tx.TransactionID, &tx.ProductID, &tx.VariantID, &tx.TransactionType, &tx.QuantityChange, &tx.QuantityBefore, &tx.QuantityAfter, &tx.Reason, &tx.ReferenceType, &tx.ReferenceID, &tx.CreatedBy, &tx.Gender, &tx.ConfirmationImage, &tx.PaymentType, &tx.TotalMoneyReceive, &tx.CreatedAt, &tx.ProductName, &tx.ProductPrice); err != nil {
+		if err := rows.Scan(&tx.TransactionID, &tx.ProductID, &tx.VariantID, &tx.TransactionType, &tx.QuantityChange, &tx.QuantityBefore, &tx.QuantityAfter, &tx.Reason, &tx.Notes, &tx.ReferenceType, &tx.ReferenceID, &tx.CreatedBy, &tx.ConfirmationImage, &tx.CreatedAt, &tx.ProductName); err != nil {
 			return models.StockTransactionListResponse{}, fmt.Errorf("scan stock transaction: %w", err)
-		}
-		if tx.TransactionType == "DECREMENT" && tx.ProductPrice != nil {
-			var earned float64
-			if _, err := fmt.Sscan(*tx.ProductPrice, &earned); err == nil {
-				earned *= float64(-tx.QuantityChange)
-				tx.Earned = &earned
-				out.TotalEarned += earned
-			}
 		}
 		out.Transactions = append(out.Transactions, tx)
 	}
@@ -127,24 +115,3 @@ func (r *InventoryRepository) list(ctx context.Context, where string, args []any
 	}
 	return out, nil
 }
-
-func (r *InventoryRepository) BulkReduction(ctx context.Context, request models.BulkStockReductionRequest) (models.BulkStockReductionResponse, error) {
-	result := models.BulkStockReductionResponse{Successful: make([]models.BulkStockReductionResult, 0), Failed: make([]models.BulkStockReductionError, 0), TotalItems: len(request.Items)}
-	reason := request.Reason
-	if request.Remark != nil && *request.Remark != "" {
-		reason += ": " + *request.Remark
-	}
-	for _, item := range request.Items {
-		transaction, err := r.Adjust(ctx, item.ProductID, models.AdjustStockRequest{VariantID: item.VariantID, QuantityChange: -item.Quantity, Reason: reason, Gender: &request.Gender, ReferenceType: stringPointer("BULK"), ConfirmationImage: request.ConfirmationImage, PaymentType: &request.PaymentType, TotalMoneyReceive: &request.TotalMoneyReceive}, request.Operator)
-		if err != nil {
-			result.Failed = append(result.Failed, models.BulkStockReductionError{ProductID: item.ProductID, VariantID: item.VariantID, Error: err.Error()})
-			continue
-		}
-		result.Successful = append(result.Successful, models.BulkStockReductionResult{ProductID: item.ProductID, VariantID: item.VariantID, TransactionID: transaction.TransactionID, QuantityBefore: transaction.QuantityBefore, QuantityAfter: transaction.QuantityAfter})
-	}
-	result.SuccessfulCount = len(result.Successful)
-	result.FailedCount = len(result.Failed)
-	return result, nil
-}
-
-func stringPointer(value string) *string { return &value }

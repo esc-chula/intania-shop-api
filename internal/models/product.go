@@ -1,11 +1,8 @@
 package models
 
-import (
-	"encoding/json"
-	"time"
-)
+import "time"
 
-// ProductStatus is the client-facing status enum retained from the legacy API.
+// ProductStatus is the client-facing catalogue status enum.
 type ProductStatus string
 
 const (
@@ -27,13 +24,7 @@ const (
 	ProductTypeMultiple ProductType = "Multiple"
 )
 
-// PickupMethods contains fulfillment options for a product.
-type PickupMethods struct {
-	SelfPickup   bool `json:"self_pickup"`
-	HomeDelivery bool `json:"home_delivery"`
-}
-
-// ProductListItem is the compact public catalog representation.
+// ProductListItem is the compact admin catalog representation.
 type ProductListItem struct {
 	ProductID int64         `json:"product_id"`
 	Name      string        `json:"name"`
@@ -41,8 +32,6 @@ type ProductListItem struct {
 	Status    ProductStatus `json:"status"`
 	Category  *string       `json:"category"`
 	Images    []*string     `json:"images"`
-	MinOrder  *int32        `json:"min_order"`
-	MaxOrder  *int32        `json:"max_order"`
 }
 
 // Variant is a purchasable product option.
@@ -55,33 +44,25 @@ type Variant struct {
 	Price         *string `json:"price"`
 }
 
-// ProductDetail is the complete public product representation.
+// ProductDetail is the complete admin product representation.
 type ProductDetail struct {
-	ProductID      int64          `json:"product_id"`
-	Name           string         `json:"name"`
-	Description    *string        `json:"description"`
-	BasePrice      string         `json:"base_price"`
-	Status         ProductStatus  `json:"status"`
-	Category       *string        `json:"category"`
-	StockQuantity  *int32         `json:"stock_quantity"`
-	Images         []*string      `json:"images"`
-	PreviewVideo   *string        `json:"preview_video"`
-	Shipping       []*string      `json:"shipping"`
-	ProductType    *ProductType   `json:"product_type"`
-	MinOrder       *int32         `json:"min_order"`
-	MaxOrder       *int32         `json:"max_order"`
-	SizeChart      *string        `json:"size_chart"`
-	PickupMethods  *PickupMethods `json:"pickup_methods"`
-	PickupLocation *string        `json:"pickup_location"`
-	ShippingFee    *string        `json:"shipping_fee"`
-	SKU            *string        `json:"sku"`
-	ProductCode    *string        `json:"product_code"`
-	CreatedAt      *time.Time     `json:"created_at"`
-	UpdatedAt      *time.Time     `json:"updated_at"`
-	Variants       []Variant      `json:"variants"`
+	ProductID     int64         `json:"product_id"`
+	Name          string        `json:"name"`
+	Description   *string       `json:"description"`
+	BasePrice     string        `json:"base_price"`
+	Status        ProductStatus `json:"status"`
+	Category      *string       `json:"category"`
+	StockQuantity *int32        `json:"stock_quantity"`
+	Images        []*string     `json:"images"`
+	ProductType   *ProductType  `json:"product_type"`
+	SKU           *string       `json:"sku"`
+	ProductCode   *string       `json:"product_code"`
+	CreatedAt     *time.Time    `json:"created_at"`
+	UpdatedAt     *time.Time    `json:"updated_at"`
+	Variants      []Variant     `json:"variants"`
 }
 
-// ProductListResponse is the paginated legacy catalog response.
+// ProductListResponse is the paginated catalogue response.
 type ProductListResponse struct {
 	Products   []ProductListItem `json:"products"`
 	Total      int64             `json:"total"`
@@ -97,16 +78,4 @@ type ProductDetailListResponse struct {
 	Page       int32           `json:"page"`
 	PageSize   int32           `json:"page_size"`
 	TotalPages int32           `json:"total_pages"`
-}
-
-// DecodePickupMethods translates the persisted JSON document when present.
-func DecodePickupMethods(value []byte) (*PickupMethods, error) {
-	if len(value) == 0 || string(value) == "null" {
-		return nil, nil
-	}
-	var methods PickupMethods
-	if err := json.Unmarshal(value, &methods); err != nil {
-		return nil, err
-	}
-	return &methods, nil
 }

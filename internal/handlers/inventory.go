@@ -15,7 +15,6 @@ type StockAdjuster interface {
 	ProductTransactions(context.Context, int32, int32, int32) (models.StockTransactionListResponse, error)
 	VariantTransactions(context.Context, int32, int32, int32) (models.StockTransactionListResponse, error)
 	Transactions(context.Context, int32, int32) (models.StockTransactionListResponse, error)
-	BulkReduction(context.Context, models.BulkStockReductionRequest) (models.BulkStockReductionResponse, error)
 }
 
 type InventoryHandler struct{ inventory StockAdjuster }
@@ -27,7 +26,6 @@ func (h *InventoryHandler) Register(router chi.Router) {
 	router.Get("/products/{id}/stock/transactions", h.productTransactions)
 	router.Get("/variants/{id}/stock/transactions", h.variantTransactions)
 	router.Get("/stock/transactions", h.transactions)
-	router.Post("/stock/bulk-reduction", h.bulkReduction)
 }
 func (h *InventoryHandler) adjust(w http.ResponseWriter, r *http.Request) {
 	identity, ok := middlewares.IdentityFromContext(r.Context())
@@ -99,20 +97,6 @@ func (h *InventoryHandler) variantTransactions(w http.ResponseWriter, r *http.Re
 func (h *InventoryHandler) transactions(w http.ResponseWriter, r *http.Request) {
 	page, size := inventoryPage(r)
 	out, err := h.inventory.Transactions(r.Context(), page, size)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeSuccess(w, http.StatusOK, out)
-}
-
-func (h *InventoryHandler) bulkReduction(w http.ResponseWriter, r *http.Request) {
-	var input models.BulkStockReductionRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&input); err != nil {
-		writeError(w, http.StatusBadRequest, "Invalid JSON request body")
-		return
-	}
-	out, err := h.inventory.BulkReduction(r.Context(), input)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

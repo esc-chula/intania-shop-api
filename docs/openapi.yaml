@@ -3,21 +3,25 @@ info:
   title: Intania Shop API
   version: 1.0.0
   description: |
-    Backend API for the ESC Chula Intania Shop.
-    Identity comes from a JWT. Operations described as Admin only require the ADMIN role.
+    Admin-only catalogue, inventory, and upload backend for the ESC Chula Intania Shop.
+    Identity comes from Google OAuth and a JWT. Business operations require the ADMIN role.
+
+    Project/POS operations are contract-first and marked as planned; they are visible for
+    frontend development but are not implemented by the current server.
 servers:
   - url: /
     description: Same host as this documentation
 tags:
   - { name: Service }
   - { name: Authentication }
-  - { name: Products }
-  - { name: Cart }
-  - { name: Favorites }
-  - { name: Orders }
-  - { name: Content }
+  - { name: Products, description: "Admin-only product catalogue" }
   - { name: Inventory }
   - { name: Uploads }
+  - { name: Projects, description: "PLANNED — event project administration; not implemented" }
+  - { name: Project Products, description: "PLANNED — project catalogue selection and pricing; not implemented" }
+  - { name: Project Promotions, description: "PLANNED — project-scoped pricing promotions; not implemented" }
+  - { name: POS, description: "PLANNED — event POS catalogue, quotation, and checkout; not implemented" }
+  - { name: Project Orders, description: "PLANNED — project POS history and reporting; not implemented" }
 paths:
   /:
     get:
@@ -88,6 +92,8 @@ paths:
       operationId: listProducts
       tags: [Products]
       summary: List products
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
       parameters:
         - { $ref: "#/components/parameters/Page" }
         - { $ref: "#/components/parameters/PageSize" }
@@ -96,6 +102,8 @@ paths:
           schema: { type: boolean, default: false }
       responses:
         "200": { $ref: "#/components/responses/ProductList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
     post:
       operationId: createProduct
@@ -109,11 +117,14 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /products/search:
     get:
       operationId: searchProducts
       tags: [Products]
       summary: Search products
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
         - { $ref: "#/components/parameters/Page" }
@@ -121,16 +132,24 @@ paths:
       responses:
         "200": { $ref: "#/components/responses/ProductSearch" }
         "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
   /products/{id}:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     get:
       operationId: getProduct
       tags: [Products]
       summary: Get product details
+      description: Admin only.
+      security: [{ bearerAuth: [] }]
       responses:
         "200": { $ref: "#/components/responses/ProductDetail" }
         "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "500": { $ref: "#/components/responses/Error" }
     put:
       operationId: updateProduct
       tags: [Products]
@@ -197,236 +216,6 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
-  /cart:
-    get:
-      operationId: getCart
-      tags: [Cart]
-      summary: Get the caller cart
-      security: [{ bearerAuth: [] }]
-      responses:
-        "200": { $ref: "#/components/responses/Cart" }
-        "401": { $ref: "#/components/responses/Error" }
-        "500": { $ref: "#/components/responses/Error" }
-  /cart/items:
-    put:
-      operationId: addCartItem
-      tags: [Cart]
-      summary: Add an item to the caller cart
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/AddCartItemRequest" }
-      responses:
-        "200": { $ref: "#/components/responses/AddCartItem" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-  /favorites:
-    put:
-      operationId: addFavorite
-      tags: [Favorites]
-      summary: Add a product to the caller favorites
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/AddFavoriteRequest" }
-      responses:
-        "200": { $ref: "#/components/responses/AddFavorite" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-  /orders:
-    get:
-      operationId: listOrders
-      tags: [Orders]
-      summary: List orders visible to the caller
-      description: Users see their own orders; administrators see all orders.
-      security: [{ bearerAuth: [] }]
-      responses:
-        "200": { $ref: "#/components/responses/OrderList" }
-        "401": { $ref: "#/components/responses/Error" }
-        "500": { $ref: "#/components/responses/Error" }
-    post:
-      operationId: createOrder
-      tags: [Orders]
-      summary: Create an order for the caller
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/CreateOrderRequest" }
-      responses:
-        "201": { $ref: "#/components/responses/Order" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-  /orders/{id}:
-    parameters: [{ $ref: "#/components/parameters/ID" }]
-    get:
-      operationId: getOrder
-      tags: [Orders]
-      summary: Get an order visible to the caller
-      security: [{ bearerAuth: [] }]
-      responses:
-        "200": { $ref: "#/components/responses/Order" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-    put:
-      operationId: updateOrder
-      tags: [Orders]
-      summary: Update an order
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/UpdateOrderRequest" }
-      responses:
-        "200": { $ref: "#/components/responses/Order" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-    delete:
-      operationId: deleteOrder
-      tags: [Orders]
-      summary: Delete an order
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      responses:
-        "204": { description: Order deleted }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-  /promos:
-    get:
-      operationId: listPromos
-      tags: [Content]
-      summary: List promotions
-      responses:
-        "200": { $ref: "#/components/responses/PromoList" }
-        "500": { $ref: "#/components/responses/Error" }
-    post:
-      operationId: createPromo
-      tags: [Content]
-      summary: Create a promotion
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      requestBody: { $ref: "#/components/requestBodies/CreateContent" }
-      responses:
-        "201": { $ref: "#/components/responses/Promo" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-  /promos/active:
-    get:
-      operationId: listActivePromos
-      tags: [Content]
-      summary: List active promotions
-      responses:
-        "200": { $ref: "#/components/responses/PromoList" }
-        "500": { $ref: "#/components/responses/Error" }
-  /promos/{id}:
-    parameters: [{ $ref: "#/components/parameters/ID" }]
-    get:
-      operationId: getPromo
-      tags: [Content]
-      summary: Get a promotion
-      responses:
-        "200": { $ref: "#/components/responses/Promo" }
-        "400": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-    put:
-      operationId: updatePromo
-      tags: [Content]
-      summary: Update a promotion
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      requestBody: { $ref: "#/components/requestBodies/UpdateContent" }
-      responses:
-        "200": { $ref: "#/components/responses/Promo" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-    delete:
-      operationId: deletePromo
-      tags: [Content]
-      summary: Delete a promotion
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      responses:
-        "204": { description: Promotion deleted }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-  /banners:
-    get:
-      operationId: listBanners
-      tags: [Content]
-      summary: List banners
-      responses:
-        "200": { $ref: "#/components/responses/BannerList" }
-        "500": { $ref: "#/components/responses/Error" }
-    post:
-      operationId: createBanner
-      tags: [Content]
-      summary: Create a banner
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      requestBody: { $ref: "#/components/requestBodies/CreateContent" }
-      responses:
-        "201": { $ref: "#/components/responses/Banner" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-  /banners/active:
-    get:
-      operationId: listActiveBanners
-      tags: [Content]
-      summary: List active banners
-      responses:
-        "200": { $ref: "#/components/responses/BannerList" }
-        "500": { $ref: "#/components/responses/Error" }
-  /banners/{id}:
-    parameters: [{ $ref: "#/components/parameters/ID" }]
-    get:
-      operationId: getBanner
-      tags: [Content]
-      summary: Get a banner
-      responses:
-        "200": { $ref: "#/components/responses/Banner" }
-        "400": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-    put:
-      operationId: updateBanner
-      tags: [Content]
-      summary: Update a banner
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      requestBody: { $ref: "#/components/requestBodies/UpdateContent" }
-      responses:
-        "200": { $ref: "#/components/responses/Banner" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
-    delete:
-      operationId: deleteBanner
-      tags: [Content]
-      summary: Delete a banner
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      responses:
-        "204": { description: Banner deleted }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
   /products/{id}/stock/adjust:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     post:
@@ -486,42 +275,11 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
-  /stock/bulk-reduction:
-    post:
-      operationId: bulkReduceStock
-      tags: [Inventory]
-      summary: Reduce stock for multiple items
-      description: Admin only.
-      security: [{ bearerAuth: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/BulkStockReductionRequest" }
-      responses:
-        "200": { $ref: "#/components/responses/BulkStockReduction" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
   /upload/product-images:
     post:
       operationId: uploadProductImages
       tags: [Uploads]
       summary: Upload product images
-      description: Admin only. Maximum request size is 100 MiB.
-      security: [{ bearerAuth: [] }]
-      requestBody: { $ref: "#/components/requestBodies/Files" }
-      responses:
-        "200": { $ref: "#/components/responses/UploadMany" }
-        "400": { $ref: "#/components/responses/Error" }
-        "401": { $ref: "#/components/responses/Error" }
-        "403": { $ref: "#/components/responses/Error" }
-        "413": { $ref: "#/components/responses/Error" }
-  /upload/product-videos:
-    post:
-      operationId: uploadProductVideos
-      tags: [Uploads]
-      summary: Upload product videos
       description: Admin only. Maximum request size is 100 MiB.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/Files" }
@@ -553,6 +311,383 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [Projects]
+      summary: List projects
+      description: Admin only. Filters are applied before pagination. Results use a stable `created_at DESC, project_id DESC` order.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: name, in: query, description: Case-insensitive partial name match, schema: { type: string, maxLength: 150 } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ProjectStatus" } }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+      responses:
+        "200": { $ref: "#/components/responses/ProjectList" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    post:
+      operationId: createProject
+      tags: [Projects]
+      summary: Create a project
+      description: Admin only. An omitted `end_date` is normalized to `start_date`.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
+      responses:
+        "201": { $ref: "#/components/responses/Project" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}:
+    parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+    get:
+      operationId: getProject
+      tags: [Projects]
+      summary: Get a project
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/Project" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    put:
+      operationId: updateProject
+      tags: [Projects]
+      summary: Update a project
+      description: Admin only. Name and description remain correctable; sale dates become immutable after the first project order.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
+      responses:
+        "200": { $ref: "#/components/responses/Project" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    delete:
+      operationId: deleteProject
+      tags: [Projects]
+      summary: Delete a project with no orders
+      description: Admin only. Configuration is deleted with the project. A project with any order returns `PROJECT_HAS_ORDERS`.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Project deleted }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/product-candidates:
+    get:
+      operationId: listProjectProductCandidates
+      tags: [Project Products]
+      summary: List products eligible for project selection
+      description: Admin only. Products are grouped with their sellable items and current selection state.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectID" }
+        - { name: name, in: query, schema: { type: string, maxLength: 150 } }
+        - { name: category, in: query, schema: { type: string, maxLength: 100 } }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+      responses:
+        "200": { $ref: "#/components/responses/ProjectProductCandidates" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/product-selection/preview:
+    post:
+      operationId: previewProjectProductSelection
+      tags: [Project Products]
+      summary: Resolve all product candidates matching filters
+      description: Admin only. Supports cross-page Select All without mutating project configuration.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+      requestBody: { $ref: "#/components/requestBodies/ProjectProductSelectionPreview" }
+      responses:
+        "200": { $ref: "#/components/responses/ProjectProductSelectionPreview" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/products:
+    parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+    get:
+      operationId: listProjectProducts
+      tags: [Project Products]
+      summary: List assigned project products
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/ProjectProducts" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    put:
+      operationId: replaceProjectProducts
+      tags: [Project Products]
+      summary: Atomically replace project product assignments
+      description: Admin only. The supplied list is the complete desired selection. Any validation failure rejects the entire replacement. Completed projects reject changes.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/ReplaceProjectProducts" }
+      responses:
+        "200": { $ref: "#/components/responses/ProjectProducts" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/categories:
+    get:
+      operationId: listProjectCategories
+      tags: [Project Products]
+      summary: List project categories and selected-product counts
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+      responses:
+        "200": { $ref: "#/components/responses/ProjectCategories" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/promotions:
+    parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+    get:
+      operationId: listProjectPromotions
+      tags: [Project Promotions]
+      summary: List project pricing promotions
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/ProjectPromotionList" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    post:
+      operationId: createProjectPromotion
+      tags: [Project Promotions]
+      summary: Create a project pricing promotion
+      description: Admin only. The promotion price cannot exceed the current original bundle price. Completed projects reject changes.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/ProjectPromotionMutation" }
+      responses:
+        "201": { $ref: "#/components/responses/ProjectPromotion" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/promotions/{promotion_id}:
+    parameters:
+      - { $ref: "#/components/parameters/ProjectID" }
+      - { $ref: "#/components/parameters/PromotionID" }
+    get:
+      operationId: getProjectPromotion
+      tags: [Project Promotions]
+      summary: Get a project pricing promotion
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { $ref: "#/components/responses/ProjectPromotion" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    put:
+      operationId: updateProjectPromotion
+      tags: [Project Promotions]
+      summary: Update a project pricing promotion
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/ProjectPromotionMutation" }
+      responses:
+        "200": { $ref: "#/components/responses/ProjectPromotion" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    delete:
+      operationId: deleteProjectPromotion
+      tags: [Project Promotions]
+      summary: Delete a project pricing promotion
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Promotion deleted }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/pos:
+    get:
+      operationId: getProjectPOSCatalog
+      tags: [POS]
+      summary: Get the project POS catalogue
+      description: Admin only. Preview is available in any project status; `can_checkout` is true only while ACTIVE.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+      responses:
+        "200": { $ref: "#/components/responses/POSCatalog" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/pos/category-order:
+    put:
+      operationId: replaceProjectPOSCategoryOrder
+      tags: [POS]
+      summary: Replace the complete POS category order
+      description: Admin only. Every current category must appear exactly once. Completed projects reject changes.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+      requestBody: { $ref: "#/components/requestBodies/POSCategoryOrder" }
+      responses:
+        "200": { $ref: "#/components/responses/ProjectCategories" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/checkout/quote:
+    post:
+      operationId: quoteProjectPOSCheckout
+      tags: [POS]
+      summary: Validate and price a POS cart
+      description: Admin only. Available only while the project is ACTIVE. Client-supplied prices, discounts, and totals are never accepted.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+      requestBody: { $ref: "#/components/requestBodies/POSQuote" }
+      responses:
+        "200": { $ref: "#/components/responses/POSQuote" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /upload/payment-slips:
+    post:
+      operationId: uploadPaymentSlip
+      tags: [Uploads, POS]
+      summary: Upload a trusted POS QR payment slip
+      description: Admin only. Accepts one image up to 10 MiB. Checkout references the returned object key rather than an arbitrary URL.
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/PaymentSlipUpload" }
+      responses:
+        "201": { $ref: "#/components/responses/PaymentSlip" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "413": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/orders:
+    parameters: [{ $ref: "#/components/parameters/ProjectID" }]
+    post:
+      operationId: createProjectPOSOrder
+      tags: [POS, Project Orders]
+      summary: Atomically create a paid POS order and reduce stock
+      description: Admin only and ACTIVE projects only. Identical retries return the original order; a key reused with different content returns `IDEMPOTENCY_KEY_REUSED`.
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody: { $ref: "#/components/requestBodies/POSCheckout" }
+      responses:
+        "201": { $ref: "#/components/responses/POSOrder" }
+        "200": { $ref: "#/components/responses/POSOrderReplay" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "409": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+    get:
+      operationId: listProjectPOSOrders
+      tags: [Project Orders]
+      summary: List project POS orders
+      description: Admin only. The default range starts at project start 00:00:00 Asia/Bangkok and ends at the current time.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: order_number, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: payment_method, in: query, schema: { $ref: "#/components/schemas/POSPaymentMethod" } }
+        - { name: staff_id, in: query, schema: { type: integer, format: int64, minimum: 1 } }
+        - { name: created_from, in: query, schema: { type: string, format: date-time } }
+        - { name: created_to, in: query, schema: { type: string, format: date-time } }
+        - { name: sort_by, in: query, schema: { type: string, enum: [order_number, net_total], default: order_number } }
+        - { name: sort_order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+      responses:
+        "200": { $ref: "#/components/responses/POSOrderList" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/orders/export:
+    get:
+      operationId: exportProjectPOSOrders
+      tags: [Project Orders]
+      summary: Export filtered project POS orders as Excel
+      description: Admin only. Uses the history filters and sorting without pagination. The workbook contains one row per order item with repeated order-level fields.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectID" }
+        - { name: order_number, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: payment_method, in: query, schema: { $ref: "#/components/schemas/POSPaymentMethod" } }
+        - { name: staff_id, in: query, schema: { type: integer, format: int64, minimum: 1 } }
+        - { name: created_from, in: query, schema: { type: string, format: date-time } }
+        - { name: created_to, in: query, schema: { type: string, format: date-time } }
+        - { name: sort_by, in: query, schema: { type: string, enum: [order_number, net_total], default: order_number } }
+        - { name: sort_order, in: query, schema: { type: string, enum: [asc, desc], default: desc } }
+      responses:
+        "200":
+          description: Filtered Excel workbook
+          headers:
+            Content-Disposition:
+              schema: { type: string, example: 'attachment; filename="Engineering_Fair_2026_orders_20260826T103000+0700.xlsx"' }
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
+  /projects/{project_id}/orders/{order_id}:
+    get:
+      operationId: getProjectPOSOrder
+      tags: [Project Orders]
+      summary: Get immutable project POS order details
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: "#/components/parameters/ProjectID" }
+        - { $ref: "#/components/parameters/POSOrderID" }
+      responses:
+        "200": { $ref: "#/components/responses/POSOrder" }
+        "400": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/ProjectAPIError" }
+        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "404": { $ref: "#/components/responses/ProjectAPIError" }
+        "500": { $ref: "#/components/responses/ProjectAPIError" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -569,7 +704,28 @@ components:
     PageSize:
       name: page_size
       in: query
-      schema: { type: integer, format: int32, minimum: 1, default: 10 }
+      schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 10 }
+    ProjectID:
+      name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    PromotionID:
+      name: promotion_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    POSOrderID:
+      name: order_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID generated once per checkout attempt and reused only when retrying the identical request.
+      schema: { type: string, format: uuid }
   requestBodies:
     CreateProduct:
       required: true
@@ -586,16 +742,6 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/VariantInput" }
-    CreateContent:
-      required: true
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/CreateContentRequest" }
-    UpdateContent:
-      required: true
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/ContentInput" }
     Files:
       required: true
       content:
@@ -608,6 +754,80 @@ components:
                 type: array
                 minItems: 1
                 items: { type: string, format: binary }
+    ProjectMutation:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProjectMutationRequest" }
+          example: { name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07" }
+    ProjectProductSelectionPreview:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProjectProductSelectionPreviewRequest" }
+          example: { name: Shirt, category: Apparel }
+    ReplaceProjectProducts:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ReplaceProjectProductsRequest" }
+          example:
+            items:
+              - { product_id: 10, variant_id: 22, project_price: "299.00" }
+              - { product_id: 11, variant_id: null, project_price: "59.00" }
+    ProjectPromotionMutation:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProjectPromotionMutationRequest" }
+          example:
+            name: Shirt and pin set
+            promotion_price: "329.00"
+            items:
+              - { product_id: 10, variant_id: 22, quantity: 1 }
+              - { product_id: 11, variant_id: null, quantity: 1 }
+    POSCategoryOrder:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/POSCategoryOrderRequest" }
+          example: { categories: [Apparel, Accessories] }
+    POSQuote:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/POSCartRequest" }
+          example:
+            items:
+              - { product_id: 10, variant_id: 22, quantity: 2 }
+              - { product_id: 11, variant_id: null, quantity: 1 }
+    PaymentSlipUpload:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file: { type: string, format: binary, description: "JPEG, PNG, or WebP image no larger than 10 MiB" }
+    POSCheckout:
+      required: true
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/POSCheckoutRequest" }
+          examples:
+            qr:
+              summary: QR payment
+              value:
+                buyer: { gender: FEMALE, age: 21, student_alumni_year: Intania 105 }
+                items: [{ product_id: 10, variant_id: 22, quantity: 1 }]
+                payment: { method: QR_CODE, slip_object_key: payment-slips/2026/08/example.png, note: Paid at booth 1 }
+            cashNoChange:
+              summary: Cash with retained excess
+              value:
+                buyer: { gender: PREFER_NOT_TO_SAY, age: 0, student_alumni_year: null }
+                items: [{ product_id: 11, variant_id: null, quantity: 2 }]
+                payment: { method: REAL_MONEY, received_amount: "500.00", no_change: true, note: null }
   responses:
     Error:
       description: Request failed
@@ -620,20 +840,46 @@ components:
     ProductSearch: { description: Matching products, content: { application/json: { schema: { $ref: "#/components/schemas/ProductSearchEnvelope" } } } }
     ProductDetail: { description: Product details, content: { application/json: { schema: { $ref: "#/components/schemas/ProductDetailEnvelope" } } } }
     Variant: { description: Product variant, content: { application/json: { schema: { $ref: "#/components/schemas/VariantEnvelope" } } } }
-    Cart: { description: Caller cart, content: { application/json: { schema: { $ref: "#/components/schemas/CartEnvelope" } } } }
-    AddCartItem: { description: Cart item added, content: { application/json: { schema: { $ref: "#/components/schemas/AddCartItemEnvelope" } } } }
-    AddFavorite: { description: Favorite added, content: { application/json: { schema: { $ref: "#/components/schemas/AddFavoriteEnvelope" } } } }
-    Order: { description: Order, content: { application/json: { schema: { $ref: "#/components/schemas/OrderEnvelope" } } } }
-    OrderList: { description: Orders, content: { application/json: { schema: { $ref: "#/components/schemas/OrderListEnvelope" } } } }
-    Promo: { description: Promotion, content: { application/json: { schema: { $ref: "#/components/schemas/PromoEnvelope" } } } }
-    PromoList: { description: Promotions, content: { application/json: { schema: { $ref: "#/components/schemas/PromoListEnvelope" } } } }
-    Banner: { description: Banner, content: { application/json: { schema: { $ref: "#/components/schemas/BannerEnvelope" } } } }
-    BannerList: { description: Banners, content: { application/json: { schema: { $ref: "#/components/schemas/BannerListEnvelope" } } } }
     StockTransaction: { description: Stock transaction, content: { application/json: { schema: { $ref: "#/components/schemas/StockTransactionEnvelope" } } } }
     StockTransactionList: { description: Stock transactions, content: { application/json: { schema: { $ref: "#/components/schemas/StockTransactionListEnvelope" } } } }
-    BulkStockReduction: { description: Bulk reduction result, content: { application/json: { schema: { $ref: "#/components/schemas/BulkStockReductionEnvelope" } } } }
     UploadMany: { description: Uploaded objects, content: { application/json: { schema: { $ref: "#/components/schemas/UploadManyEnvelope" } } } }
     UploadOne: { description: Uploaded image, content: { application/json: { schema: { $ref: "#/components/schemas/UploadOneEnvelope" } } } }
+    ProjectAPIError:
+      description: Project/POS request failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProjectAPIErrorResponse" }
+          examples:
+            validation: { value: { success: false, error: Project name is required, code: VALIDATION_ERROR, details: { fields: { name: Required } }, request_id: req_01J6B8K8QF4A } }
+            projectNotFound: { value: { success: false, error: Project not found, code: PROJECT_NOT_FOUND, request_id: req_01J6B8K8QF4B } }
+            stockConflict:
+              value:
+                success: false
+                error: Requested quantity exceeds available stock
+                code: INSUFFICIENT_STOCK
+                details:
+                  items: [{ product_id: 10, variant_id: 22, requested_quantity: 4, available_quantity: 2 }]
+                request_id: req_01J6B8K8QF4C
+    Project: { description: Project, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectEnvelope" } } } }
+    ProjectList: { description: Paginated projects, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectListEnvelope" } } } }
+    ProjectProductCandidates: { description: Paginated product candidates, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectProductCandidatesEnvelope" } } } }
+    ProjectProductSelectionPreview: { description: All matching sellable items, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectProductSelectionPreviewEnvelope" } } } }
+    ProjectProducts: { description: Project product assignments, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectProductsEnvelope" } } } }
+    ProjectCategories: { description: Ordered project categories, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectCategoriesEnvelope" } } } }
+    ProjectPromotion: { description: Project pricing promotion, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectPromotionEnvelope" } } } }
+    ProjectPromotionList: { description: Project pricing promotions, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectPromotionListEnvelope" } } } }
+    POSCatalog: { description: Project POS catalogue, content: { application/json: { schema: { $ref: "#/components/schemas/POSCatalogEnvelope" } } } }
+    POSQuote: { description: Server-calculated POS quotation, content: { application/json: { schema: { $ref: "#/components/schemas/POSQuoteEnvelope" } } } }
+    PaymentSlip: { description: Trusted payment slip object, content: { application/json: { schema: { $ref: "#/components/schemas/PaymentSlipEnvelope" } } } }
+    POSOrder: { description: Newly created or retrieved POS order, content: { application/json: { schema: { $ref: "#/components/schemas/POSOrderEnvelope" } } } }
+    POSOrderReplay:
+      description: Existing POS order returned for an identical idempotent retry
+      headers:
+        Idempotency-Replayed: { schema: { type: boolean, const: true } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/POSOrderEnvelope" }
+    POSOrderList: { description: Paginated project POS orders, content: { application/json: { schema: { $ref: "#/components/schemas/POSOrderListEnvelope" } } } }
   schemas:
     SuccessBase:
       type: object
@@ -646,6 +892,432 @@ components:
       properties:
         success: { type: boolean, const: false }
         error: { type: string, example: Product not found }
+    THBAmount:
+      type: string
+      pattern: '^(0|[1-9][0-9]*)\.[0-9]{2}$'
+      description: Non-negative Thai baht amount with exactly two decimal places. JSON numbers are not accepted.
+      example: "299.00"
+    ProjectAPIErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - PROJECT_NOT_FOUND
+        - PROJECT_NOT_ACTIVE
+        - PROJECT_COMPLETED
+        - PROJECT_HAS_ORDERS
+        - PRODUCT_NOT_SELLABLE
+        - PROMOTION_NOT_FOUND
+        - INSUFFICIENT_STOCK
+        - INVALID_PAYMENT_SLIP
+        - IDEMPOTENCY_KEY_REUSED
+        - AUTHENTICATION_REQUIRED
+        - FORBIDDEN
+        - INTERNAL_ERROR
+    ProjectAPIErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [success, error, code, request_id]
+      properties:
+        success: { type: boolean, const: false }
+        error: { type: string, minLength: 1, example: Requested quantity exceeds available stock }
+        code: { $ref: "#/components/schemas/ProjectAPIErrorCode" }
+        details: { type: object, additionalProperties: true }
+        request_id: { type: string, minLength: 1, example: req_01J6B8K8QF4C }
+    ProjectStatus:
+      type: string
+      enum: [NOT_STARTED, ACTIVE, COMPLETED]
+      description: Derived from Bangkok's current date and the inclusive project date range.
+    ProjectMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [name, start_date]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150, description: Trimmed before validation and persistence }
+        description: { type: [string, "null"], maxLength: 2000 }
+        start_date: { type: string, format: date }
+        end_date: { type: [string, "null"], format: date, description: Omit or send null for a single-day project }
+    Project:
+      type: object
+      additionalProperties: false
+      required: [project_id, name, description, start_date, end_date, status, order_count, created_at, updated_at]
+      properties:
+        project_id: { type: integer, format: int64, minimum: 1, example: 7 }
+        name: { type: string, maxLength: 150, example: Engineering Fair 2026 }
+        description: { type: [string, "null"], maxLength: 2000, example: Main merchandise booth }
+        start_date: { type: string, format: date, example: "2026-09-05" }
+        end_date: { type: string, format: date, example: "2026-09-07" }
+        status: { $ref: "#/components/schemas/ProjectStatus" }
+        order_count: { type: integer, format: int64, minimum: 0, example: 42 }
+        created_at: { type: string, format: date-time, example: "2026-08-26T10:00:00+07:00" }
+        updated_at: { type: string, format: date-time, example: "2026-08-26T10:30:00+07:00" }
+    Pagination:
+      type: object
+      required: [total, page, page_size, total_pages]
+      properties:
+        total: { type: integer, format: int64, minimum: 0 }
+        page: { type: integer, format: int32, minimum: 1 }
+        page_size: { type: integer, format: int32, minimum: 1, maximum: 100 }
+        total_pages: { type: integer, format: int32, minimum: 0 }
+    ProjectListData:
+      allOf:
+        - { $ref: "#/components/schemas/Pagination" }
+        - type: object
+          required: [projects]
+          properties:
+            projects: { type: array, items: { $ref: "#/components/schemas/Project" } }
+    ProjectProductFilter:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 150 }
+        category: { type: string, maxLength: 100 }
+    ProjectProductSelectionPreviewRequest:
+      allOf: [{ $ref: "#/components/schemas/ProjectProductFilter" }]
+    SellableItemReference:
+      type: object
+      required: [product_id, variant_id]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+        variant_id: { type: [integer, "null"], format: int64, minimum: 1, description: Null only for a variantless product }
+    ProjectProductAssignmentInput:
+      allOf:
+        - { $ref: "#/components/schemas/SellableItemReference" }
+        - type: object
+          required: [project_price]
+          properties:
+            project_price: { $ref: "#/components/schemas/THBAmount" }
+    ReplaceProjectProductsRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/ProjectProductAssignmentInput" }
+    ProjectSellableItem:
+      type: object
+      additionalProperties: false
+      required: [product_id, variant_id, size, color, stock_quantity, default_price, selected, project_price]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+        variant_id: { type: [integer, "null"], format: int64, minimum: 1 }
+        size: { type: [string, "null"], maxLength: 20 }
+        color: { type: [string, "null"], maxLength: 50 }
+        stock_quantity: { type: integer, format: int32, minimum: 0 }
+        default_price: { $ref: "#/components/schemas/THBAmount" }
+        selected: { type: boolean }
+        project_price:
+          oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
+    ProjectProductCandidate:
+      type: object
+      additionalProperties: false
+      required: [product_id, name, category, image_url, sellable_items]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+        name: { type: string, maxLength: 150 }
+        category: { type: [string, "null"], maxLength: 100 }
+        image_url: { type: [string, "null"], format: uri }
+        sellable_items: { type: array, minItems: 1, items: { $ref: "#/components/schemas/ProjectSellableItem" } }
+    ProjectProductCandidatesData:
+      allOf:
+        - { $ref: "#/components/schemas/Pagination" }
+        - type: object
+          required: [products]
+          properties:
+            products: { type: array, items: { $ref: "#/components/schemas/ProjectProductCandidate" } }
+    ProjectProductSelectionPreviewData:
+      type: object
+      additionalProperties: false
+      required: [items, total]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ProjectProductAssignmentInput" } }
+        total: { type: integer, format: int64, minimum: 0, description: Number of resolved sellable items }
+    ProjectProductAssignment:
+      type: object
+      additionalProperties: false
+      required: [product_id, variant_id, product_name, category, image_url, size, color, stock_quantity, project_price]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+        variant_id: { type: [integer, "null"], format: int64, minimum: 1 }
+        product_name: { type: string, maxLength: 150 }
+        category: { type: [string, "null"], maxLength: 100 }
+        image_url: { type: [string, "null"], format: uri }
+        size: { type: [string, "null"], maxLength: 20 }
+        color: { type: [string, "null"], maxLength: 50 }
+        stock_quantity: { type: integer, format: int32, minimum: 0 }
+        project_price: { $ref: "#/components/schemas/THBAmount" }
+    ProjectProductsData:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/ProjectProductAssignment" } }
+    ProjectCategory:
+      type: object
+      additionalProperties: false
+      required: [name, selected_product_count, position]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        selected_product_count: { type: integer, format: int64, minimum: 0 }
+        position: { type: integer, format: int32, minimum: 0 }
+    ProjectCategoriesData:
+      type: object
+      additionalProperties: false
+      required: [categories]
+      properties:
+        categories: { type: array, items: { $ref: "#/components/schemas/ProjectCategory" } }
+    POSCategoryOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [categories]
+      properties:
+        categories:
+          type: array
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 100 }
+    ProjectPromotionItemInput:
+      allOf:
+        - { $ref: "#/components/schemas/SellableItemReference" }
+        - type: object
+          required: [quantity]
+          properties:
+            quantity: { type: integer, format: int32, minimum: 1 }
+    ProjectPromotionMutationRequest:
+      type: object
+      additionalProperties: false
+      required: [name, promotion_price, items]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        promotion_price: { $ref: "#/components/schemas/THBAmount" }
+        items:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/ProjectPromotionItemInput" }
+    ProjectPromotionItem:
+      allOf:
+        - { $ref: "#/components/schemas/ProjectPromotionItemInput" }
+        - type: object
+          required: [product_name, size, color, unit_price]
+          properties:
+            product_name: { type: string, maxLength: 150 }
+            size: { type: [string, "null"], maxLength: 20 }
+            color: { type: [string, "null"], maxLength: 50 }
+            unit_price: { $ref: "#/components/schemas/THBAmount" }
+    ProjectPromotion:
+      type: object
+      additionalProperties: false
+      required: [promotion_id, project_id, name, items, original_bundle_price, promotion_price, discount, created_at, updated_at]
+      properties:
+        promotion_id: { type: integer, format: int64, minimum: 1 }
+        project_id: { type: integer, format: int64, minimum: 1 }
+        name: { type: string, maxLength: 150 }
+        items: { type: array, minItems: 1, items: { $ref: "#/components/schemas/ProjectPromotionItem" } }
+        original_bundle_price: { $ref: "#/components/schemas/THBAmount" }
+        promotion_price: { $ref: "#/components/schemas/THBAmount" }
+        discount: { $ref: "#/components/schemas/THBAmount" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ProjectPromotionListData:
+      type: object
+      additionalProperties: false
+      required: [promotions]
+      properties:
+        promotions: { type: array, items: { $ref: "#/components/schemas/ProjectPromotion" } }
+    POSCategory:
+      type: object
+      additionalProperties: false
+      required: [name, position, products]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        position: { type: integer, format: int32, minimum: 0 }
+        products: { type: array, items: { $ref: "#/components/schemas/ProjectProductAssignment" } }
+    POSCatalog:
+      type: object
+      additionalProperties: false
+      required: [project, can_checkout, categories]
+      properties:
+        project: { $ref: "#/components/schemas/Project" }
+        can_checkout: { type: boolean, description: True only while project status is ACTIVE }
+        categories: { type: array, items: { $ref: "#/components/schemas/POSCategory" } }
+    POSCartItemRequest:
+      allOf:
+        - { $ref: "#/components/schemas/SellableItemReference" }
+        - type: object
+          required: [quantity]
+          properties:
+            quantity: { type: integer, format: int32, minimum: 1 }
+    POSCartRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/POSCartItemRequest" }
+    POSQuoteLineItem:
+      type: object
+      additionalProperties: false
+      required: [product_id, variant_id, product_name, size, color, image_url, quantity, unit_price, line_total, available_quantity]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+        variant_id: { type: [integer, "null"], format: int64, minimum: 1 }
+        product_name: { type: string, maxLength: 150 }
+        size: { type: [string, "null"], maxLength: 20 }
+        color: { type: [string, "null"], maxLength: 50 }
+        image_url: { type: [string, "null"], format: uri }
+        quantity: { type: integer, format: int32, minimum: 1 }
+        unit_price: { $ref: "#/components/schemas/THBAmount" }
+        line_total: { $ref: "#/components/schemas/THBAmount" }
+        available_quantity: { type: integer, format: int32, minimum: 0 }
+    AppliedProjectPromotion:
+      type: object
+      additionalProperties: false
+      required: [promotion_id, name, original_bundle_price, promotion_price, discount]
+      properties:
+        promotion_id: { type: integer, format: int64, minimum: 1 }
+        name: { type: string, maxLength: 150 }
+        original_bundle_price: { $ref: "#/components/schemas/THBAmount" }
+        promotion_price: { $ref: "#/components/schemas/THBAmount" }
+        discount: { $ref: "#/components/schemas/THBAmount" }
+    POSQuote:
+      type: object
+      additionalProperties: false
+      required: [project_id, items, subtotal, applied_promotion, discount, net_total, quoted_at]
+      properties:
+        project_id: { type: integer, format: int64, minimum: 1 }
+        items: { type: array, minItems: 1, items: { $ref: "#/components/schemas/POSQuoteLineItem" } }
+        subtotal: { $ref: "#/components/schemas/THBAmount" }
+        applied_promotion:
+          oneOf: [{ $ref: "#/components/schemas/AppliedProjectPromotion" }, { type: "null" }]
+          description: At most one promotion, applied at most once. Highest discount wins; ties use oldest created_at then lowest ID.
+        discount: { $ref: "#/components/schemas/THBAmount" }
+        net_total: { $ref: "#/components/schemas/THBAmount" }
+        quoted_at: { type: string, format: date-time }
+    PaymentSlip:
+      type: object
+      additionalProperties: false
+      required: [object_key, url, content_type, size]
+      properties:
+        object_key: { type: string, minLength: 1, maxLength: 1024, example: payment-slips/2026/08/example.png }
+        url: { type: string, format: uri, example: "https://storage.googleapis.com/intania-shop/payment-slips/2026/08/example.png" }
+        content_type: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        size: { type: integer, format: int64, minimum: 1, maximum: 10485760 }
+    POSBuyer:
+      type: object
+      additionalProperties: false
+      required: [gender]
+      properties:
+        gender: { type: string, enum: [MALE, FEMALE, PREFER_NOT_TO_SAY] }
+        age: { type: [integer, "null"], format: int32, minimum: 0 }
+        student_alumni_year: { type: [string, "null"], maxLength: 50, description: Trimmed cohort text such as `Intania 105` or `2568` }
+    POSPaymentMethod: { type: string, enum: [QR_CODE, REAL_MONEY] }
+    POSQRPaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [method, slip_object_key]
+      properties:
+        method: { type: string, const: QR_CODE }
+        slip_object_key: { type: string, minLength: 1, maxLength: 1024 }
+        note: { type: [string, "null"], maxLength: 500 }
+    POSCashPaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [method, received_amount, no_change]
+      properties:
+        method: { type: string, const: REAL_MONEY }
+        received_amount: { $ref: "#/components/schemas/THBAmount" }
+        no_change: { type: boolean }
+        note: { type: [string, "null"], maxLength: 500 }
+    POSPaymentRequest:
+      oneOf:
+        - { $ref: "#/components/schemas/POSQRPaymentRequest" }
+        - { $ref: "#/components/schemas/POSCashPaymentRequest" }
+      discriminator:
+        propertyName: method
+        mapping:
+          QR_CODE: "#/components/schemas/POSQRPaymentRequest"
+          REAL_MONEY: "#/components/schemas/POSCashPaymentRequest"
+    POSCheckoutRequest:
+      type: object
+      additionalProperties: false
+      required: [buyer, items, payment]
+      properties:
+        buyer: { $ref: "#/components/schemas/POSBuyer" }
+        items:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/POSCartItemRequest" }
+        payment: { $ref: "#/components/schemas/POSPaymentRequest" }
+    POSStaffSnapshot:
+      type: object
+      additionalProperties: false
+      required: [staff_id, full_name, email]
+      properties:
+        staff_id: { type: integer, format: int64, minimum: 1 }
+        full_name: { type: string, minLength: 1, maxLength: 100 }
+        email: { type: string, format: email }
+    POSPaymentSnapshot:
+      type: object
+      additionalProperties: false
+      required: [method, slip_url, received_amount, change_amount, retained_amount, no_change, note]
+      properties:
+        method: { $ref: "#/components/schemas/POSPaymentMethod" }
+        slip_url: { type: [string, "null"], format: uri, description: Present for QR_CODE and authorized for admin preview }
+        received_amount:
+          oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
+        change_amount:
+          oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
+        retained_amount:
+          oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
+        no_change: { type: [boolean, "null"] }
+        note: { type: [string, "null"], maxLength: 500 }
+    POSOrderItemSnapshot:
+      type: object
+      additionalProperties: false
+      required: [order_item_id, product_id, variant_id, product_name, size, color, image_url, quantity, unit_price, line_total, inventory_transaction_id]
+      properties:
+        order_item_id: { type: integer, format: int64, minimum: 1 }
+        product_id: { type: integer, format: int64, minimum: 1 }
+        variant_id: { type: [integer, "null"], format: int64, minimum: 1 }
+        product_name: { type: string, maxLength: 150 }
+        size: { type: [string, "null"], maxLength: 20 }
+        color: { type: [string, "null"], maxLength: 50 }
+        image_url: { type: [string, "null"], format: uri }
+        quantity: { type: integer, format: int32, minimum: 1 }
+        unit_price: { $ref: "#/components/schemas/THBAmount" }
+        line_total: { $ref: "#/components/schemas/THBAmount" }
+        inventory_transaction_id: { type: integer, format: int64, minimum: 1 }
+    POSOrder:
+      type: object
+      additionalProperties: false
+      required: [order_id, order_number, project_id, status, staff, buyer, items, applied_promotion, subtotal, discount, net_total, payment, created_at]
+      properties:
+        order_id: { type: integer, format: int64, minimum: 1 }
+        order_number: { type: string, minLength: 1, maxLength: 100, description: Opaque server-generated identifier; clients must not parse its format }
+        project_id: { type: integer, format: int64, minimum: 1 }
+        status: { type: string, const: COMPLETED }
+        staff: { $ref: "#/components/schemas/POSStaffSnapshot" }
+        buyer: { $ref: "#/components/schemas/POSBuyer" }
+        items: { type: array, minItems: 1, items: { $ref: "#/components/schemas/POSOrderItemSnapshot" } }
+        applied_promotion:
+          oneOf: [{ $ref: "#/components/schemas/AppliedProjectPromotion" }, { type: "null" }]
+        subtotal: { $ref: "#/components/schemas/THBAmount" }
+        discount: { $ref: "#/components/schemas/THBAmount" }
+        net_total: { $ref: "#/components/schemas/THBAmount" }
+        payment: { $ref: "#/components/schemas/POSPaymentSnapshot" }
+        created_at: { type: string, format: date-time }
+    POSOrderListData:
+      allOf:
+        - { $ref: "#/components/schemas/Pagination" }
+        - type: object
+          required: [orders]
+          properties:
+            orders: { type: array, items: { $ref: "#/components/schemas/POSOrder" } }
     User:
       type: object
       required: [id, full_name, email, role, profile_picture]
@@ -657,11 +1329,6 @@ components:
         profile_picture: { type: [string, "null"], format: uri }
     ProductStatus: { type: string, enum: [Preorder, InStock, OutOfStock] }
     ProductType: { type: string, enum: [Single, Multiple] }
-    PickupMethods:
-      type: object
-      properties:
-        self_pickup: { type: boolean }
-        home_delivery: { type: boolean }
     ProductListItem:
       type: object
       required: [product_id, name, base_price, status, images]
@@ -672,8 +1339,6 @@ components:
         status: { $ref: "#/components/schemas/ProductStatus" }
         category: { type: [string, "null"] }
         images: { type: array, items: { type: [string, "null"], format: uri } }
-        min_order: { type: [integer, "null"], format: int32 }
-        max_order: { type: [integer, "null"], format: int32 }
     Variant:
       type: object
       required: [variant_id, product_id]
@@ -692,13 +1357,7 @@ components:
           properties:
             description: { type: [string, "null"] }
             stock_quantity: { type: [integer, "null"], format: int32 }
-            preview_video: { type: [string, "null"], format: uri }
-            shipping: { type: array, items: { type: [string, "null"] } }
             product_type: { oneOf: [{ $ref: "#/components/schemas/ProductType" }, { type: "null" }] }
-            size_chart: { type: [string, "null"], format: uri }
-            pickup_methods: { oneOf: [{ $ref: "#/components/schemas/PickupMethods" }, { type: "null" }] }
-            pickup_location: { type: [string, "null"] }
-            shipping_fee: { type: [string, "null"] }
             sku: { type: [string, "null"] }
             product_code: { type: [string, "null"] }
             created_at: { type: [string, "null"], format: date-time }
@@ -714,15 +1373,7 @@ components:
         category: { type: [string, "null"] }
         stock_quantity: { type: [integer, "null"], format: int32 }
         images: { type: array, items: { type: [string, "null"], format: uri } }
-        preview_video: { type: [string, "null"], format: uri }
-        shipping: { type: array, items: { type: [string, "null"] } }
         product_type: { $ref: "#/components/schemas/ProductType" }
-        min_order: { type: [integer, "null"], format: int32 }
-        max_order: { type: [integer, "null"], format: int32 }
-        size_chart: { type: [string, "null"], format: uri }
-        pickup_methods: { $ref: "#/components/schemas/PickupMethods" }
-        pickup_location: { type: [string, "null"] }
-        shipping_fee: { type: [string, "null"] }
         sku: { type: [string, "null"] }
         product_code: { type: [string, "null"] }
         variants: { type: array, items: { $ref: "#/components/schemas/VariantInput" } }
@@ -746,114 +1397,6 @@ components:
         page: { type: integer, format: int32 }
         page_size: { type: integer, format: int32 }
         total_pages: { type: integer, format: int32 }
-    AddCartItemRequest:
-      type: object
-      required: [variant_id, quantity]
-      properties:
-        variant_id: { type: integer, format: int64, minimum: 1 }
-        quantity: { type: integer, format: int32, minimum: 1 }
-    CartItem:
-      type: object
-      properties:
-        item_id: { type: integer, format: int64 }
-        cart_id: { type: integer, format: int64 }
-        variant_id: { type: integer, format: int64 }
-        quantity: { type: integer, format: int32 }
-    Cart:
-      type: object
-      required: [cart_id, user_id, items]
-      properties:
-        cart_id: { type: integer, format: int64 }
-        user_id: { type: integer, format: int64 }
-        items:
-          type: array
-          items:
-            type: object
-            properties:
-              item_id: { type: integer, format: int64 }
-              cart_id: { type: integer, format: int64 }
-              variant_id: { type: integer, format: int64 }
-              quantity: { type: integer, format: int32 }
-              available_stock: { type: [integer, "null"], format: int32 }
-              variant: { type: object, additionalProperties: true }
-    AddFavoriteRequest:
-      type: object
-      required: [product_id]
-      properties:
-        product_id: { type: integer, format: int64, minimum: 1 }
-    AddFavoriteData:
-      type: object
-      properties:
-        user_id: { type: integer, format: int64 }
-        product_id: { type: integer, format: int64 }
-        created_at: { type: string, format: date-time }
-        message: { type: string }
-    DeliveryType: { type: string, enum: [PICKUP, SHIPPING] }
-    OrderStatus: { type: string, enum: [CART, PENDING_PAYMENT, CONFIRMED, SHIPPING, COMPLETED] }
-    CreateOrderRequest:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          minItems: 1
-          items:
-            type: object
-            required: [variant_id, quantity]
-            properties:
-              variant_id: { type: integer, format: int64, minimum: 1 }
-              quantity: { type: integer, format: int32, minimum: 1 }
-        delivery_type: { oneOf: [{ $ref: "#/components/schemas/DeliveryType" }, { type: "null" }] }
-        shipping_address: { type: [string, "null"] }
-        delivery_fee: { type: [string, "null"] }
-    UpdateOrderRequest:
-      type: object
-      properties:
-        order_status: { $ref: "#/components/schemas/OrderStatus" }
-        delivery_type: { $ref: "#/components/schemas/DeliveryType" }
-        shipping_address: { type: [string, "null"] }
-        tracking_number: { type: [string, "null"] }
-    Order:
-      type: object
-      required: [order_id, order_code, user_id, total_amount, delivery_fee, order_status, created_at, items]
-      properties:
-        order_id: { type: integer, format: int64 }
-        order_code: { type: string }
-        user_id: { type: integer, format: int64 }
-        total_amount: { type: string }
-        delivery_fee: { type: string }
-        order_status: { $ref: "#/components/schemas/OrderStatus" }
-        delivery_type: { oneOf: [{ $ref: "#/components/schemas/DeliveryType" }, { type: "null" }] }
-        shipping_address: { type: [string, "null"] }
-        tracking_number: { type: [string, "null"] }
-        created_at: { type: string, format: date-time }
-        items: { type: array, items: { type: object, additionalProperties: true } }
-    ContentInput:
-      type: object
-      properties:
-        img_url: { type: string, format: uri }
-        link_url: { type: [string, "null"], format: uri }
-        is_active: { type: boolean }
-    CreateContentRequest:
-      allOf:
-        - { $ref: "#/components/schemas/ContentInput" }
-        - { type: object, required: [img_url] }
-    Promo:
-      type: object
-      properties:
-        promo_id: { type: integer, format: int64 }
-        img_url: { type: string, format: uri }
-        link_url: { type: [string, "null"], format: uri }
-        is_active: { type: boolean }
-        created_at: { type: string, format: date-time }
-    Banner:
-      type: object
-      properties:
-        banner_id: { type: integer, format: int64 }
-        img_url: { type: string, format: uri }
-        link_url: { type: [string, "null"], format: uri }
-        is_active: { type: boolean }
-        created_at: { type: string, format: date-time }
     AdjustStockRequest:
       type: object
       required: [quantity_change, reason]
@@ -864,7 +1407,6 @@ components:
         notes: { type: [string, "null"] }
         reference_type: { type: [string, "null"] }
         reference_id: { type: [integer, "null"], format: int64 }
-        gender: { type: [string, "null"] }
         confirmation_image: { type: [string, "null"], format: uri }
     StockTransaction:
       type: object
@@ -877,16 +1419,12 @@ components:
         quantity_before: { type: integer, format: int32 }
         quantity_after: { type: integer, format: int32 }
         reason: { type: [string, "null"] }
+        notes: { type: [string, "null"] }
         reference_type: { type: [string, "null"] }
         reference_id: { type: [integer, "null"], format: int64 }
         created_by: { type: [string, "null"] }
-        gender: { type: [string, "null"] }
         confirmation_image: { type: [string, "null"], format: uri }
-        payment_type: { type: [string, "null"] }
-        total_money_receive: { type: [string, "null"] }
         product_name: { type: string }
-        product_price: { type: string }
-        earned: { type: number }
         created_at: { type: string, format: date-time }
     StockTransactionList:
       type: object
@@ -896,36 +1434,6 @@ components:
         page: { type: integer, format: int32 }
         page_size: { type: integer, format: int32 }
         total_pages: { type: integer, format: int32 }
-        total_earned: { type: number }
-    BulkStockReductionRequest:
-      type: object
-      required: [reason, operator, gender, payment_type, total_money_receive, items]
-      properties:
-        reason: { type: string, minLength: 1 }
-        operator: { type: string, minLength: 1 }
-        remark: { type: [string, "null"] }
-        gender: { type: string, minLength: 1 }
-        payment_type: { type: string }
-        total_money_receive: { type: string, example: "1000.00" }
-        confirmation_image: { type: [string, "null"], format: uri }
-        items:
-          type: array
-          minItems: 1
-          items:
-            type: object
-            required: [product_id, quantity]
-            properties:
-              product_id: { type: integer, format: int64, minimum: 1 }
-              variant_id: { type: [integer, "null"], format: int64 }
-              quantity: { type: integer, format: int32, minimum: 1 }
-    BulkStockReductionData:
-      type: object
-      properties:
-        successful: { type: array, items: { type: object, additionalProperties: true } }
-        failed: { type: array, items: { type: object, additionalProperties: true } }
-        total_items: { type: integer }
-        successful_count: { type: integer }
-        failed_count: { type: integer }
     UploadedObject:
       type: object
       required: [url, object_name]
@@ -956,42 +1464,6 @@ components:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
         - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Variant" } } }
-    CartEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Cart" } } }
-    AddCartItemEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { type: object, properties: { item: { $ref: "#/components/schemas/CartItem" }, message: { type: string } } } } }
-    AddFavoriteEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/AddFavoriteData" } } }
-    OrderEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Order" } } }
-    OrderListEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { type: array, items: { $ref: "#/components/schemas/Order" } } } }
-    PromoEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Promo" } } }
-    PromoListEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { type: array, items: { $ref: "#/components/schemas/Promo" } } } }
-    BannerEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Banner" } } }
-    BannerListEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { type: array, items: { $ref: "#/components/schemas/Banner" } } } }
     StockTransactionEnvelope:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
@@ -1000,10 +1472,6 @@ components:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
         - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/StockTransactionList" } } }
-    BulkStockReductionEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/BulkStockReductionData" } } }
     UploadManyEnvelope:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
@@ -1012,3 +1480,144 @@ components:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
         - { type: object, required: [data], properties: { data: { type: object, properties: { image: { $ref: "#/components/schemas/UploadedObject" } } } } }
+    ProjectEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Project" } } }
+      example:
+        success: true
+        data: { project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: NOT_STARTED, order_count: 0, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-08-26T10:00:00+07:00" }
+    ProjectListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectListData" } } }
+      example:
+        success: true
+        data:
+          projects: [{ project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: NOT_STARTED, order_count: 0, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-08-26T10:00:00+07:00" }]
+          total: 1
+          page: 1
+          page_size: 10
+          total_pages: 1
+    ProjectProductCandidatesEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectProductCandidatesData" } } }
+      example:
+        success: true
+        data:
+          products:
+            - product_id: 10
+              name: Intania Shirt
+              category: Apparel
+              image_url: "https://example.com/shirt.png"
+              sellable_items:
+                - { product_id: 10, variant_id: 22, size: M, color: Navy, stock_quantity: 20, default_price: "329.00", selected: true, project_price: "299.00" }
+          total: 1
+          page: 1
+          page_size: 10
+          total_pages: 1
+    ProjectProductSelectionPreviewEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectProductSelectionPreviewData" } } }
+      example: { success: true, data: { items: [{ product_id: 10, variant_id: 22, project_price: "329.00" }], total: 1 } }
+    ProjectProductsEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectProductsData" } } }
+      example:
+        success: true
+        data:
+          items:
+            - { product_id: 10, variant_id: 22, product_name: Intania Shirt, category: Apparel, image_url: "https://example.com/shirt.png", size: M, color: Navy, stock_quantity: 20, project_price: "299.00" }
+    ProjectCategoriesEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectCategoriesData" } } }
+      example: { success: true, data: { categories: [{ name: Apparel, selected_product_count: 1, position: 0 }, { name: Accessories, selected_product_count: 2, position: 1 }] } }
+    ProjectPromotionEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectPromotion" } } }
+      example:
+        success: true
+        data:
+          promotion_id: 3
+          project_id: 7
+          name: Shirt and pin set
+          items:
+            - { product_id: 10, variant_id: 22, quantity: 1, product_name: Intania Shirt, size: M, color: Navy, unit_price: "299.00" }
+            - { product_id: 11, variant_id: null, quantity: 1, product_name: Enamel Pin, size: null, color: null, unit_price: "59.00" }
+          original_bundle_price: "358.00"
+          promotion_price: "329.00"
+          discount: "29.00"
+          created_at: "2026-08-26T11:00:00+07:00"
+          updated_at: "2026-08-26T11:00:00+07:00"
+    ProjectPromotionListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectPromotionListData" } } }
+      example: { success: true, data: { promotions: [] } }
+    POSCatalogEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/POSCatalog" } } }
+      example:
+        success: true
+        data:
+          project: { project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: ACTIVE, order_count: 12, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-09-05T08:00:00+07:00" }
+          can_checkout: true
+          categories:
+            - name: Apparel
+              position: 0
+              products:
+                - { product_id: 10, variant_id: 22, product_name: Intania Shirt, category: Apparel, image_url: "https://example.com/shirt.png", size: M, color: Navy, stock_quantity: 20, project_price: "299.00" }
+    POSQuoteEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/POSQuote" } } }
+      example:
+        success: true
+        data:
+          project_id: 7
+          items:
+            - { product_id: 10, variant_id: 22, product_name: Intania Shirt, size: M, color: Navy, image_url: "https://example.com/shirt.png", quantity: 1, unit_price: "299.00", line_total: "299.00", available_quantity: 20 }
+            - { product_id: 11, variant_id: null, product_name: Enamel Pin, size: null, color: null, image_url: "https://example.com/pin.png", quantity: 1, unit_price: "59.00", line_total: "59.00", available_quantity: 50 }
+          subtotal: "358.00"
+          applied_promotion: { promotion_id: 3, name: Shirt and pin set, original_bundle_price: "358.00", promotion_price: "329.00", discount: "29.00" }
+          discount: "29.00"
+          net_total: "329.00"
+          quoted_at: "2026-09-05T10:30:00+07:00"
+    PaymentSlipEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/PaymentSlip" } } }
+      example: { success: true, data: { object_key: payment-slips/2026/08/example.png, url: "https://storage.googleapis.com/intania-shop/payment-slips/2026/08/example.png", content_type: image/png, size: 482193 } }
+    POSOrderEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/POSOrder" } } }
+      example:
+        success: true
+        data:
+          order_id: 9001
+          order_number: POS-20260905-0001
+          project_id: 7
+          status: COMPLETED
+          staff: { staff_id: 2, full_name: Booth Admin, email: admin@example.com }
+          buyer: { gender: FEMALE, age: 21, student_alumni_year: Intania 105 }
+          items:
+            - { order_item_id: 1, product_id: 10, variant_id: 22, product_name: Intania Shirt, size: M, color: Navy, image_url: "https://example.com/shirt.png", quantity: 1, unit_price: "299.00", line_total: "299.00", inventory_transaction_id: 701 }
+            - { order_item_id: 2, product_id: 11, variant_id: null, product_name: Enamel Pin, size: null, color: null, image_url: "https://example.com/pin.png", quantity: 1, unit_price: "59.00", line_total: "59.00", inventory_transaction_id: 702 }
+          applied_promotion: { promotion_id: 3, name: Shirt and pin set, original_bundle_price: "358.00", promotion_price: "329.00", discount: "29.00" }
+          subtotal: "358.00"
+          discount: "29.00"
+          net_total: "329.00"
+          payment: { method: QR_CODE, slip_url: "https://example.com/slip.png", received_amount: null, change_amount: null, retained_amount: null, no_change: null, note: Paid at booth 1 }
+          created_at: "2026-09-05T10:31:00+07:00"
+    POSOrderListEnvelope:
+      allOf:
+        - { $ref: "#/components/schemas/SuccessBase" }
+        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/POSOrderListData" } } }
+      example: { success: true, data: { orders: [], total: 0, page: 1, page_size: 10, total_pages: 0 } }

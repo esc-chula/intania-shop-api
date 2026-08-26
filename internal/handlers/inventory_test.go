@@ -39,9 +39,6 @@ func (s *inventoryStub) VariantTransactions(context.Context, int32, int32, int32
 func (s *inventoryStub) Transactions(context.Context, int32, int32) (models.StockTransactionListResponse, error) {
 	return models.StockTransactionListResponse{}, nil
 }
-func (s *inventoryStub) BulkReduction(context.Context, models.BulkStockReductionRequest) (models.BulkStockReductionResponse, error) {
-	return models.BulkStockReductionResponse{}, nil
-}
 
 var _ middlewares.TokenVerifier = inventoryVerifier{}
 

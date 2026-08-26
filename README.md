@@ -1,294 +1,150 @@
 # Intania Shop API
 
-Backend API for the ESC Chula Intania Shop. It provides authentication and authorization, product and variant management, carts, favorites, orders, promotions, banners, inventory tracking, and media uploads.
+Admin-only backend for authentication, product catalogue management, inventory, and uploads. The previous customer storefront domains have been removed. Project/POS is designed contract-first in the OpenAPI document and will be implemented next.
+
+## Current scope
+
+The server currently implements 22 method/path combinations:
+
+- 4 service and documentation routes
+- 3 Google OAuth routes
+- 9 product and variant routes
+- 4 inventory routes
+- 2 upload routes
+
+All catalogue, inventory, and upload operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
+
+The interactive `/docs` page also shows the planned Project/POS operations. Their tags are explicitly labeled `PLANNED`; they are API contracts for frontend development and are not registered by the current server.
 
 ## Technology
 
 - Go 1.26.5
-- Chi v5 routing with standard `net/http` handlers and middleware
+- Chi v5 and `net/http`
 - PostgreSQL with pgx 5
 - Goose database migrations
-- Cobra CLI commands
-- JWT authentication using HS256
-- Google OAuth 2.0 with PKCE
-- Google Cloud Storage for uploaded media
-- Structured JSON logging with `log/slog`
-
-## Requirements
-
-- Go 1.26.5, as pinned by `go.mod`
-- PostgreSQL
-- Docker and Docker Compose if you use the included local database
-- Google OAuth client credentials
-- A Google Cloud Storage bucket
-- Google Application Default Credentials; local development can use the service-account JSON key
-- Air for optional hot reload
-- `golangci-lint` for the complete check workflow
-
-Install Air:
-
-```bash
-go install github.com/air-verse/air@latest
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
+- Google OAuth 2.0 with PKCE and HS256 JWTs
+- Google Cloud Storage
+- Structured logging with `log/slog`
 
 ## Configuration
 
-Copy the example configuration:
+Copy the example and configure local credentials:
 
 ```bash
 cp .env.example .env
 ```
 
-Configure `.env` for local development:
+Required settings are `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URL`, and `GCS_BUCKET`. Local Google Cloud authentication may use `GOOGLE_APPLICATION_CREDENTIALS`; deployed environments should use an attached service account.
 
-```dotenv
-SERVER_ADDR=0.0.0.0:8080
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/intania_shop?sslmode=disable
-DB_MAX_CONNS=10
-DB_MIN_CONNS=0
-DB_MAX_CONN_LIFETIME=30m
-DB_MAX_CONN_IDLE_TIME=5m
-SERVER_READ_HEADER_TIMEOUT=5s
-SERVER_READ_TIMEOUT=15s
-SERVER_WRITE_TIMEOUT=30s
-SERVER_IDLE_TIMEOUT=60s
-SERVER_SHUTDOWN_TIMEOUT=15s
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
-LOG_LEVEL=INFO
-JWT_SECRET=replace-with-a-random-secret-at-least-32-bytes
-JWT_ISSUER=intania-shop-api
-JWT_TTL=24h
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_REDIRECT_URL=http://localhost:8080/auth/google/callback
-AUTH_COOKIE_SECURE=false
-GCS_BUCKET=your-bucket-name
-GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
-```
+The server validates required configuration at startup. `make run`, `make migrate`, and Air load `.env`; raw Go commands require exported environment variables.
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | HS256 signing and OAuth-cookie secret; minimum 32 bytes |
-| `GOOGLE_CLIENT_ID` | Yes | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth client secret |
-| `GOOGLE_REDIRECT_URL` | Yes | Registered Google OAuth callback URL |
-| `GCS_BUCKET` | Yes | Google Cloud Storage bucket used for uploads |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Environment-dependent | Local service-account JSON path; Google Cloud runtimes should use an attached service account |
-| `SERVER_ADDR` | No | Listen address; defaults to `0.0.0.0:8080` |
-| `DB_MAX_CONNS` / `DB_MIN_CONNS` | No | PostgreSQL pool limits; defaults to `10` / `0` |
-| `DB_MAX_CONN_LIFETIME` | No | Maximum connection lifetime; defaults to `30m` |
-| `DB_MAX_CONN_IDLE_TIME` | No | Maximum idle time; defaults to `5m` |
-| `JWT_ISSUER` | No | Required token issuer; defaults to `intania-shop-api` |
-| `JWT_TTL` | No | Access-token lifetime; defaults to `24h` |
-| `AUTH_COOKIE_SECURE` | No | Require HTTPS for the OAuth-state cookie; use `false` only for local HTTP |
-| `CORS_ALLOWED_ORIGINS` | No | Comma-separated browser origins; local defaults are provided |
-| `LOG_LEVEL` | No | Structured log level; defaults to `INFO` |
-| `SERVER_*_TIMEOUT` | No | HTTP lifecycle timeouts; see `.env.example` |
+## Clean database setup
 
-The server fails fast when required database, authentication, OAuth, or storage configuration is missing. Keep `.env` and service-account JSON files out of version control.
+There is one clean baseline migration. It creates only:
 
-`make run` and `make migrate` load `.env`. Air loads it through `.air.toml`, so `make dev` and `air` work directly. Raw Go commands, tests, containers, and deployments require ordinary exported environment variables.
+- `users`
+- `products`
+- `variants`
+- `stock_transactions`
 
-## Local development
+It also creates only `user_role`, `product_status`, `stock_transaction_type`, and `product_type` enums. Migration history from the storefront backend is intentionally unsupported.
 
-Start PostgreSQL and initialize an empty database:
+Reset the local database before using this version:
 
 ```bash
+docker compose down -v
 docker compose up -d db
 make migrate
 ```
 
-Run once or with hot reload:
+Then start the API:
 
 ```bash
 make run
-make dev
 ```
 
-The default base URL is `http://localhost:8080`. `0.0.0.0` is the bind address, not the browser URL.
+For hot reload, use `make dev` after installing Air.
 
-```bash
-curl http://localhost:8080/
-curl http://localhost:8080/health
-```
+## Authentication
 
-## Authentication and authorization
-
-Google OAuth with PKCE is the supported login flow. For browser login, open:
+Google OAuth is the only account creation and login flow. Open:
 
 ```text
 http://localhost:8080/auth/google/redirect
 ```
 
-The API sets a signed, short-lived, HttpOnly OAuth-state cookie, redirects to Google, verifies the returned state and PKCE verifier, then returns the user and a JWT from `GET /auth/google/callback`.
-
-Browser clients may instead request `GET /auth/google`. It returns `auth_url` and sets the same cookie, so the request must include credentials before navigation:
-
-```javascript
-const response = await fetch("http://localhost:8080/auth/google", {
-  credentials: "include",
-});
-const { data } = await response.json();
-window.location.assign(data.auth_url);
-```
-
-Keep the host consistent. With the default callback, use `localhost`, not `0.0.0.0` or `127.0.0.1`. `GOOGLE_REDIRECT_URL` must exactly match Google Cloud Console.
-
-### Testing authentication with Bruno, Postman, or curl
-
-API clients do not share their cookie jar with your browser:
-
-1. Open `http://localhost:8080/auth/google/redirect` in a browser.
-2. Complete Google sign-in.
-3. Copy the JWT from the callback JSON.
-4. Configure it as a Bearer token in the API client.
+After Google sign-in, the callback returns a JWT. Send it as:
 
 ```http
 Authorization: Bearer <token>
 ```
 
-JWTs contain user ID and role and expire according to `JWT_TTL`. User-specific operations derive ownership from the JWT.
+New accounts have the `USER` role unless promoted to `ADMIN`. Only administrators can access products, variants, inventory, and uploads.
 
-Public access covers service checks, OAuth, catalog reads, and promotion/banner reads. Cart, favorite, and user-order operations require authentication. Catalog mutations, inventory, uploads, content mutations, and administrative order operations require an `Admin` token.
+## Implemented API
 
-## API endpoints
+### Public service and authentication
 
-### General and authentication
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/` | Service name |
+| `GET` | `/health` | Database-backed health check |
+| `GET` | `/openapi.yaml` | Canonical OpenAPI contract |
+| `GET` | `/docs` | Interactive API reference |
+| `GET` | `/auth/google` | Create an OAuth authorization URL |
+| `GET` | `/auth/google/redirect` | Redirect to Google OAuth |
+| `GET` | `/auth/google/callback` | Complete OAuth and return a JWT |
 
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| `GET` | `/` | Public | Service name |
-| `GET` | `/health` | Public | Database-backed health check |
-| `GET` | `/openapi.yaml` | Public | OpenAPI contract |
-| `GET` | `/docs` | Public | Interactive API reference |
-| `GET` | `/auth/google` | Public | Create an authorization URL and set state cookie |
-| `GET` | `/auth/google/redirect` | Public | Set state cookie and redirect to Google |
-| `GET` | `/auth/google/callback` | Public | Complete login and return a JWT |
+### Admin products and variants
 
-### Products and variants
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/products` | Paginated list; optionally include variants |
+| `GET` | `/products/search` | Paginated name search |
+| `GET` | `/products/{id}` | Product detail |
+| `POST` | `/products` | Create product |
+| `PUT` | `/products/{id}` | Update product |
+| `DELETE` | `/products/{id}` | Delete product |
+| `POST` | `/products/{id}/variants` | Create variant |
+| `PUT` | `/variants/{id}` | Update variant |
+| `DELETE` | `/variants/{id}` | Delete variant |
 
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| `GET` | `/products` | Public | List; supports `page`, `page_size`, `include_variants=true` |
-| `GET` | `/products/search` | Public | Search by `q`; supports pagination |
-| `GET` | `/products/{id}` | Public | Get product details |
-| `POST` | `/products` | Admin | Create product |
-| `PUT` | `/products/{id}` | Admin | Update product |
-| `DELETE` | `/products/{id}` | Admin | Delete product |
-| `POST` | `/products/{id}/variants` | Admin | Create variant |
-| `PUT` | `/variants/{id}` | Admin | Update variant |
-| `DELETE` | `/variants/{id}` | Admin | Delete variant |
+The clean product model retains name, description, price, status, category, stock, images, product type, SKU, product code, timestamps, and variants.
 
-Product pagination defaults to page 1 and 10 items, with a maximum page size of 100.
+### Admin inventory and uploads
 
-### Cart, favorites, and orders
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/products/{id}/stock/adjust` | Adjust product or variant stock |
+| `GET` | `/products/{id}/stock/transactions` | Product stock history |
+| `GET` | `/variants/{id}/stock/transactions` | Variant stock history |
+| `GET` | `/stock/transactions` | All stock history |
+| `POST` | `/upload/product-images` | Upload product images |
+| `POST` | `/stock/upload-proof-images` | Upload a stock confirmation image |
 
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| `GET` | `/cart` | User | Get caller's cart |
-| `PUT` | `/cart/items` | User | Add or increment a cart variant |
-| `PUT` | `/favorites` | User | Add a favorite product |
-| `POST` | `/orders` | User | Create caller's order |
-| `GET` | `/orders` | User/Admin | List caller's orders; admins receive all |
-| `GET` | `/orders/{id}` | Owner/Admin | Get an owned order or any as admin |
-| `PUT` | `/orders/{id}` | Admin | Update order |
-| `DELETE` | `/orders/{id}` | Admin | Delete order |
+Stock adjustments lock the affected row and persist the transaction atomically. Inventory records retain reason, notes, references, actor, and confirmation image. The `ORDER` transaction type is reserved for future Project/POS checkout.
 
-### Inventory
+## Documentation
 
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| `POST` | `/products/{id}/stock/adjust` | Admin | Increment or decrement stock |
-| `GET` | `/products/{id}/stock/transactions` | Admin | Product stock history |
-| `GET` | `/variants/{id}/stock/transactions` | Admin | Variant stock history |
-| `GET` | `/stock/transactions` | Admin | Grouped stock history |
-| `POST` | `/stock/bulk-reduction` | Admin | Atomically reduce several items |
-| `POST` | `/stock/upload-proof-images` | Admin | Upload one proof image |
+- [`docs/openapi.yaml`](docs/openapi.yaml) is the single machine-readable source of truth.
+- [`docs/project-pos-api-contract.md`](docs/project-pos-api-contract.md) is the review companion for planned Project/POS operations.
+- `/docs` renders both implemented and planned operations; planned tags say they are not implemented.
 
-History defaults to 20 items per page and is capped at 100. Inventory updates lock rows and record history in the same transaction.
+## Responses
 
-### Promotions and banners
-
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| `GET` | `/promos` | Public | List promotions |
-| `GET` | `/promos/active` | Public | List active promotions |
-| `GET` | `/promos/{id}` | Public | Get promotion |
-| `POST` | `/promos` | Admin | Create promotion |
-| `PUT` | `/promos/{id}` | Admin | Update promotion |
-| `DELETE` | `/promos/{id}` | Admin | Delete promotion |
-| `GET` | `/banners` | Public | List banners |
-| `GET` | `/banners/active` | Public | List active banners |
-| `GET` | `/banners/{id}` | Public | Get banner |
-| `POST` | `/banners` | Admin | Create banner |
-| `PUT` | `/banners/{id}` | Admin | Update banner |
-| `DELETE` | `/banners/{id}` | Admin | Delete banner |
-
-### Uploads
-
-| Method | Path | Access | Description |
-| --- | --- | --- | --- |
-| `POST` | `/upload/product-images` | Admin | Upload product images |
-| `POST` | `/upload/product-videos` | Admin | Upload product videos |
-| `POST` | `/stock/upload-proof-images` | Admin | Upload one proof image |
-
-Uploads use `multipart/form-data`. Product uploads use the `files` field and allow 100 MiB bodies. Proof uploads accept the first file and allow 10 MiB.
-
-See [`docs/openapi.yaml`](docs/openapi.yaml) for the machine-readable contract.
-
-## Responses and errors
-
-Successful JSON responses:
+Successful JSON responses use:
 
 ```json
-{
-  "success": true,
-  "data": {}
-}
+{"success": true, "data": {}}
 ```
 
-Application errors:
+Current implemented errors retain the existing human-readable shape:
 
 ```json
-{
-  "success": false,
-  "error": "Product not found"
-}
+{"success": false, "error": "Product not found"}
 ```
 
-Common statuses:
-
-- `400` malformed or invalid input
-- `401` missing, invalid, or expired authentication
-- `403` insufficient role or ownership
-- `404` missing resource
-- `409` conflicting data where applicable
-- `413` oversized upload
-- `500` unexpected application failure
-- `502` upstream Google OAuth failure
-- `503` failed PostgreSQL health check
-
-Root and health return plain text. Successful deletes return `204 No Content`.
-
-## Database migrations
-
-Migrations live in `internal/migrations/sql/`, are embedded, and use Goose. They do not run at API startup.
-
-For an empty database:
-
-```bash
-make migrate
-```
-
-For an existing legacy database, do not replay the baseline. Back up the database, verify that its schema matches `internal/migrations/sql/00001_legacy_baseline.sql`, then run:
-
-```bash
-go run . adopt-baseline --confirm-legacy-schema
-```
-
-After adoption, apply later migrations with `make migrate`. Production migrations should run as one deployment job.
+The planned Project/POS contract extends errors with stable `code`, optional `details`, and `request_id`.
 
 ## Quality checks
 
@@ -296,7 +152,7 @@ After adoption, apply later migrations with `make migrate`. Production migration
 make check
 ```
 
-Individual commands:
+Or run checks individually:
 
 ```bash
 make fmt
@@ -304,67 +160,30 @@ make vet
 make test
 make lint
 make build
+make docs-check
 ```
 
-`make test` includes the race detector and coverage. Integration tests require an isolated database:
+Integration tests require an isolated, disposable PostgreSQL database:
 
 ```bash
 TEST_DATABASE_URL="postgres://postgres:postgres@localhost:55433/intania_shop_test?sslmode=disable" make test-integration
 ```
 
-Never use a database containing data you need to preserve.
-
-## Docker
-
-Build:
-
-```bash
-docker build -t intania-shop-api .
-```
-
-Run locally with the credential mounted:
-
-```bash
-docker run --rm -p 8080:8080 \
-  --env-file .env \
-  -v "$PWD/service-account.json:/run/secrets/gcp.json:ro" \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp.json \
-  intania-shop-api
-```
-
-The final image is distroless and non-root. On Cloud Run, attach a least-privilege runtime service account with access to `GCS_BUCKET` instead of deploying a JSON key.
-
 ## Project structure
 
 ```text
-cmd/                    CLI commands: serve, migrate, adopt-baseline
+cmd/                    CLI commands: serve and migrate
 internal/
 ├── auth/               Google OAuth and PKCE
-├── config/             Environment loading and validation
+├── config/             Environment validation
 ├── database/           PostgreSQL pool
 ├── handlers/           HTTP transport
-├── middlewares/        Auth, CORS, logging, recovery, request IDs
-├── migrations/         Goose and embedded SQL
-├── models/             Domain and API models
+├── middlewares/        Authentication, roles, logging, and recovery
+├── migrations/         Clean Goose baseline
+├── models/             Core API models
 ├── repositories/       PostgreSQL access and transactions
-├── server/             Chi route groups, dependency wiring, and lifecycle
+├── server/             Routes, wiring, and lifecycle
 ├── storage/            Google Cloud Storage
-└── usecases/           Business rules and ownership
-docs/                   OpenAPI contract and embedded documentation assets
-main.go                 CLI entry point
-Dockerfile              Distroless image
-docker-compose.yaml     Local PostgreSQL
-Makefile                Development commands
-.air.toml               Hot reload
+└── usecases/           Business rules
+docs/                   OpenAPI and Project/POS contract companion
 ```
-
-Dependency direction:
-
-```text
-handlers -> usecases -> repository interfaces
-                         ^
-                  PostgreSQL repositories
-
-server -> constructs and connects dependencies
-```
-

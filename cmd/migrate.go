@@ -27,26 +27,3 @@ func newMigrateCommand() *cobra.Command {
 		},
 	}
 }
-
-func newAdoptBaselineCommand() *cobra.Command {
-	var confirmed bool
-	command := &cobra.Command{
-		Use:   "adopt-baseline",
-		Short: "Mark a verified legacy database baseline as applied",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !confirmed {
-				return fmt.Errorf("refusing to adopt baseline without --confirm-legacy-schema")
-			}
-			cfg, err := config.Load()
-			if err != nil {
-				return fmt.Errorf("load configuration: %w", err)
-			}
-			if err := migrations.AdoptBaseline(cmd.Context(), cfg.Database.URL); err != nil {
-				return fmt.Errorf("adopt baseline: %w", err)
-			}
-			return nil
-		},
-	}
-	command.Flags().BoolVar(&confirmed, "confirm-legacy-schema", false, "confirm the existing schema was verified against the baseline")
-	return command
-}

@@ -7,9 +7,9 @@ import "strings"
 type Role string
 
 const (
-	// RoleUser can access resources that it owns.
+	// RoleUser can authenticate but cannot access current business APIs.
 	RoleUser Role = "USER"
-	// RoleAdmin can administer catalog, content, orders, and inventory.
+	// RoleAdmin can administer catalogue, inventory, and uploads.
 	RoleAdmin Role = "ADMIN"
 )
 
