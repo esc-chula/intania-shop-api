@@ -405,22 +405,6 @@ paths:
         "403": { $ref: "#/components/responses/ProjectAPIError" }
         "404": { $ref: "#/components/responses/ProjectAPIError" }
         "500": { $ref: "#/components/responses/ProjectAPIError" }
-  /projects/{project_id}/product-selection/preview:
-    post:
-      operationId: previewProjectProductSelection
-      tags: [Project Products]
-      summary: Resolve all product candidates matching filters
-      description: Admin only. Supports cross-page Select All without mutating project configuration.
-      security: [{ bearerAuth: [] }]
-      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
-      requestBody: { $ref: "#/components/requestBodies/ProjectProductSelectionPreview" }
-      responses:
-        "200": { $ref: "#/components/responses/ProjectProductSelectionPreview" }
-        "400": { $ref: "#/components/responses/ProjectAPIError" }
-        "401": { $ref: "#/components/responses/ProjectAPIError" }
-        "403": { $ref: "#/components/responses/ProjectAPIError" }
-        "404": { $ref: "#/components/responses/ProjectAPIError" }
-        "500": { $ref: "#/components/responses/ProjectAPIError" }
   /projects/{project_id}/products:
     parameters: [{ $ref: "#/components/parameters/ProjectID" }]
     get:
@@ -449,20 +433,6 @@ paths:
         "403": { $ref: "#/components/responses/ProjectAPIError" }
         "404": { $ref: "#/components/responses/ProjectAPIError" }
         "409": { $ref: "#/components/responses/ProjectAPIError" }
-        "500": { $ref: "#/components/responses/ProjectAPIError" }
-  /projects/{project_id}/categories:
-    get:
-      operationId: listProjectCategories
-      tags: [Project Products]
-      summary: List project categories and selected-product counts
-      security: [{ bearerAuth: [] }]
-      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
-      responses:
-        "200": { $ref: "#/components/responses/ProjectCategories" }
-        "400": { $ref: "#/components/responses/ProjectAPIError" }
-        "401": { $ref: "#/components/responses/ProjectAPIError" }
-        "403": { $ref: "#/components/responses/ProjectAPIError" }
-        "404": { $ref: "#/components/responses/ProjectAPIError" }
         "500": { $ref: "#/components/responses/ProjectAPIError" }
   /projects/{project_id}/promotions:
     parameters: [{ $ref: "#/components/parameters/ProjectID" }]
@@ -541,7 +511,7 @@ paths:
       operationId: getProjectPOSCatalog
       tags: [POS]
       summary: Get the project POS catalogue
-      description: Admin only. Preview is available in any project status; `can_checkout` is true only while ACTIVE.
+      description: Admin only. Preview is available in any project status; `can_checkout` is true only while ACTIVE. Category groups are sorted case-insensitively by name in ascending order, with the null category last.
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/ProjectID" }]
       responses:
@@ -550,23 +520,6 @@ paths:
         "401": { $ref: "#/components/responses/ProjectAPIError" }
         "403": { $ref: "#/components/responses/ProjectAPIError" }
         "404": { $ref: "#/components/responses/ProjectAPIError" }
-        "500": { $ref: "#/components/responses/ProjectAPIError" }
-  /projects/{project_id}/pos/category-order:
-    put:
-      operationId: replaceProjectPOSCategoryOrder
-      tags: [POS]
-      summary: Replace the complete POS category order
-      description: Admin only. Every current category must appear exactly once. Completed projects reject changes.
-      security: [{ bearerAuth: [] }]
-      parameters: [{ $ref: "#/components/parameters/ProjectID" }]
-      requestBody: { $ref: "#/components/requestBodies/POSCategoryOrder" }
-      responses:
-        "200": { $ref: "#/components/responses/ProjectCategories" }
-        "400": { $ref: "#/components/responses/ProjectAPIError" }
-        "401": { $ref: "#/components/responses/ProjectAPIError" }
-        "403": { $ref: "#/components/responses/ProjectAPIError" }
-        "404": { $ref: "#/components/responses/ProjectAPIError" }
-        "409": { $ref: "#/components/responses/ProjectAPIError" }
         "500": { $ref: "#/components/responses/ProjectAPIError" }
   /projects/{project_id}/checkout/quote:
     post:
@@ -760,12 +713,6 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ProjectMutationRequest" }
           example: { name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07" }
-    ProjectProductSelectionPreview:
-      required: true
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/ProjectProductSelectionPreviewRequest" }
-          example: { name: Shirt, category: Apparel }
     ReplaceProjectProducts:
       required: true
       content:
@@ -786,12 +733,6 @@ components:
             items:
               - { product_id: 10, variant_id: 22, quantity: 1 }
               - { product_id: 11, variant_id: null, quantity: 1 }
-    POSCategoryOrder:
-      required: true
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/POSCategoryOrderRequest" }
-          example: { categories: [Apparel, Accessories] }
     POSQuote:
       required: true
       content:
@@ -863,9 +804,7 @@ components:
     Project: { description: Project, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectEnvelope" } } } }
     ProjectList: { description: Paginated projects, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectListEnvelope" } } } }
     ProjectProductCandidates: { description: Paginated product candidates, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectProductCandidatesEnvelope" } } } }
-    ProjectProductSelectionPreview: { description: All matching sellable items, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectProductSelectionPreviewEnvelope" } } } }
     ProjectProducts: { description: Project product assignments, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectProductsEnvelope" } } } }
-    ProjectCategories: { description: Ordered project categories, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectCategoriesEnvelope" } } } }
     ProjectPromotion: { description: Project pricing promotion, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectPromotionEnvelope" } } } }
     ProjectPromotionList: { description: Project pricing promotions, content: { application/json: { schema: { $ref: "#/components/schemas/ProjectPromotionListEnvelope" } } } }
     POSCatalog: { description: Project POS catalogue, content: { application/json: { schema: { $ref: "#/components/schemas/POSCatalogEnvelope" } } } }
@@ -965,14 +904,6 @@ components:
           required: [projects]
           properties:
             projects: { type: array, items: { $ref: "#/components/schemas/Project" } }
-    ProjectProductFilter:
-      type: object
-      additionalProperties: false
-      properties:
-        name: { type: string, maxLength: 150 }
-        category: { type: string, maxLength: 100 }
-    ProjectProductSelectionPreviewRequest:
-      allOf: [{ $ref: "#/components/schemas/ProjectProductFilter" }]
     SellableItemReference:
       type: object
       required: [product_id, variant_id]
@@ -1026,13 +957,6 @@ components:
           required: [products]
           properties:
             products: { type: array, items: { $ref: "#/components/schemas/ProjectProductCandidate" } }
-    ProjectProductSelectionPreviewData:
-      type: object
-      additionalProperties: false
-      required: [items, total]
-      properties:
-        items: { type: array, items: { $ref: "#/components/schemas/ProjectProductAssignmentInput" } }
-        total: { type: integer, format: int64, minimum: 0, description: Number of resolved sellable items }
     ProjectProductAssignment:
       type: object
       additionalProperties: false
@@ -1053,29 +977,6 @@ components:
       required: [items]
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/ProjectProductAssignment" } }
-    ProjectCategory:
-      type: object
-      additionalProperties: false
-      required: [name, selected_product_count, position]
-      properties:
-        name: { type: string, minLength: 1, maxLength: 100 }
-        selected_product_count: { type: integer, format: int64, minimum: 0 }
-        position: { type: integer, format: int32, minimum: 0 }
-    ProjectCategoriesData:
-      type: object
-      additionalProperties: false
-      required: [categories]
-      properties:
-        categories: { type: array, items: { $ref: "#/components/schemas/ProjectCategory" } }
-    POSCategoryOrderRequest:
-      type: object
-      additionalProperties: false
-      required: [categories]
-      properties:
-        categories:
-          type: array
-          uniqueItems: true
-          items: { type: string, minLength: 1, maxLength: 100 }
     ProjectPromotionItemInput:
       allOf:
         - { $ref: "#/components/schemas/SellableItemReference" }
@@ -1128,10 +1029,9 @@ components:
     POSCategory:
       type: object
       additionalProperties: false
-      required: [name, position, products]
+      required: [name, products]
       properties:
-        name: { type: string, minLength: 1, maxLength: 100 }
-        position: { type: integer, format: int32, minimum: 0 }
+        name: { type: [string, "null"], minLength: 1, maxLength: 100, description: Null identifies uncategorized products; this group is returned last after named categories sorted case-insensitively A-Z. }
         products: { type: array, items: { $ref: "#/components/schemas/ProjectProductAssignment" } }
     POSCatalog:
       type: object
@@ -1140,7 +1040,7 @@ components:
       properties:
         project: { $ref: "#/components/schemas/Project" }
         can_checkout: { type: boolean, description: True only while project status is ACTIVE }
-        categories: { type: array, items: { $ref: "#/components/schemas/POSCategory" } }
+        categories: { type: array, description: Named categories sorted case-insensitively A-Z; the null category is last., items: { $ref: "#/components/schemas/POSCategory" } }
     POSCartItemRequest:
       allOf:
         - { $ref: "#/components/schemas/SellableItemReference" }
@@ -1517,11 +1417,6 @@ components:
           page: 1
           page_size: 10
           total_pages: 1
-    ProjectProductSelectionPreviewEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectProductSelectionPreviewData" } } }
-      example: { success: true, data: { items: [{ product_id: 10, variant_id: 22, project_price: "329.00" }], total: 1 } }
     ProjectProductsEnvelope:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
@@ -1531,11 +1426,6 @@ components:
         data:
           items:
             - { product_id: 10, variant_id: 22, product_name: Intania Shirt, category: Apparel, image_url: "https://example.com/shirt.png", size: M, color: Navy, stock_quantity: 20, project_price: "299.00" }
-    ProjectCategoriesEnvelope:
-      allOf:
-        - { $ref: "#/components/schemas/SuccessBase" }
-        - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/ProjectCategoriesData" } } }
-      example: { success: true, data: { categories: [{ name: Apparel, selected_product_count: 1, position: 0 }, { name: Accessories, selected_product_count: 2, position: 1 }] } }
     ProjectPromotionEnvelope:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
@@ -1569,10 +1459,15 @@ components:
           project: { project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: ACTIVE, order_count: 12, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-09-05T08:00:00+07:00" }
           can_checkout: true
           categories:
+            - name: Accessories
+              products:
+                - { product_id: 11, variant_id: null, product_name: Enamel Pin, category: Accessories, image_url: "https://example.com/pin.png", size: null, color: null, stock_quantity: 50, project_price: "59.00" }
             - name: Apparel
-              position: 0
               products:
                 - { product_id: 10, variant_id: 22, product_name: Intania Shirt, category: Apparel, image_url: "https://example.com/shirt.png", size: M, color: Navy, stock_quantity: 20, project_price: "299.00" }
+            - name: null
+              products:
+                - { product_id: 12, variant_id: null, product_name: Donation Item, category: null, image_url: null, size: null, color: null, stock_quantity: 10, project_price: "20.00" }
     POSQuoteEnvelope:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
