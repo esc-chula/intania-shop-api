@@ -6,8 +6,9 @@ info:
     Admin-only catalogue, inventory, and upload backend for the ESC Chula Intania Shop.
     Identity comes from Google OAuth and a JWT. Business operations require the ADMIN role.
 
-    Project/POS operations are contract-first and marked as planned; they are visible for
-    frontend development but are not implemented by the current server.
+    Project read operations are implemented. The remaining Project/POS operations are
+    contract-first and marked as planned; they are visible for frontend development but
+    are not implemented by the current server.
 servers:
   - url: /
     description: Same host as this documentation
@@ -17,7 +18,7 @@ tags:
   - { name: Products, description: "Admin-only product catalogue" }
   - { name: Inventory }
   - { name: Uploads }
-  - { name: Projects, description: "PLANNED — event project administration; not implemented" }
+  - { name: Projects, description: "Admin-only event project administration; the read operations are implemented and the write operations are PLANNED" }
   - { name: Project Products, description: "PLANNED — project catalogue selection and pricing; not implemented" }
   - { name: Project Promotions, description: "PLANNED — project-scoped pricing promotions; not implemented" }
   - { name: POS, description: "PLANNED — event POS catalogue, quotation, and checkout; not implemented" }
@@ -332,7 +333,7 @@ paths:
     post:
       operationId: createProject
       tags: [Projects]
-      summary: Create a project
+      summary: Create a project (PLANNED)
       description: Admin only. An omitted `end_date` is normalized to `start_date`.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
@@ -359,7 +360,7 @@ paths:
     put:
       operationId: updateProject
       tags: [Projects]
-      summary: Update a project
+      summary: Update a project (PLANNED)
       description: Admin only. Name and description remain correctable; sale dates become immutable after the first project order.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
@@ -374,7 +375,7 @@ paths:
     delete:
       operationId: deleteProject
       tags: [Projects]
-      summary: Delete a project with no orders
+      summary: Delete a project with no orders (PLANNED)
       description: Admin only. Configuration is deleted with the project. A project with any order returns `PROJECT_HAS_ORDERS`.
       security: [{ bearerAuth: [] }]
       responses:

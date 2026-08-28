@@ -28,6 +28,7 @@ type Dependencies struct {
 	ProductHandler      *handlers.ProductHandler
 	ProductAdminHandler *handlers.ProductAdminHandler
 	InventoryHandler    *handlers.InventoryHandler
+	ProjectHandler      *handlers.ProjectHandler
 	UploadHandler       *handlers.UploadHandler
 	TokenVerifier       middlewares.TokenVerifier
 }
@@ -71,6 +72,9 @@ func NewHandler(dependencies Dependencies) http.Handler {
 		}
 		if dependencies.InventoryHandler != nil {
 			dependencies.InventoryHandler.Register(admin)
+		}
+		if dependencies.ProjectHandler != nil {
+			dependencies.ProjectHandler.Register(admin)
 		}
 		if dependencies.UploadHandler != nil {
 			dependencies.UploadHandler.Register(admin)
