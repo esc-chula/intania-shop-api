@@ -334,7 +334,7 @@ paths:
       operationId: createProject
       tags: [Projects]
       summary: Create a project (PLANNED)
-      description: Admin only. An omitted `end_date` is normalized to `start_date`.
+      description: Admin only. A single-day project repeats `start_date` as its `end_date`.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
       responses:
@@ -870,12 +870,12 @@ components:
     ProjectMutationRequest:
       type: object
       additionalProperties: false
-      required: [name, start_date]
+      required: [name, start_date, end_date]
       properties:
         name: { type: string, minLength: 1, maxLength: 150, description: Trimmed before validation and persistence }
         description: { type: [string, "null"], maxLength: 2000 }
         start_date: { type: string, format: date }
-        end_date: { type: [string, "null"], format: date, description: Omit or send null for a single-day project }
+        end_date: { type: string, format: date, description: Must not be earlier than `start_date`; repeat `start_date` for a single-day project }
     Project:
       type: object
       additionalProperties: false
