@@ -2,11 +2,23 @@ package usecases
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
+)
+
+// Query rules are enforced here rather than in the HTTP layer, so that the
+// transport only has to map these errors onto status codes.
+var (
+	// ErrInvalidProjectStatus reports a status filter outside the enum.
+	ErrInvalidProjectStatus = errors.New("invalid project status")
+	// ErrProjectNameTooLong reports a name filter longer than a project name.
+	ErrProjectNameTooLong = errors.New("project name filter is too long")
+	// ErrInvalidProjectID reports a project ID outside the valid range.
+	ErrInvalidProjectID = errors.New("project ID must be positive")
 )
 
 // ProjectReader reads projects with their derived status and order count.
@@ -47,7 +59,7 @@ func (service *ProjectService) List(ctx context.Context, name, status string, pa
 // Detail returns a single project.
 func (service *ProjectService) Detail(ctx context.Context, projectID int64) (models.Project, error) {
 	if projectID <= 0 {
-		return models.Project{}, fmt.Errorf("project ID must be positive")
+		return models.Project{}, ErrInvalidProjectID
 	}
 	project, err := service.projects.Detail(ctx, service.today(), projectID)
 	if err != nil {
@@ -63,12 +75,15 @@ func (service *ProjectService) today() models.Date {
 func buildProjectFilter(name, status string) (models.ProjectFilter, error) {
 	var filter models.ProjectFilter
 	if trimmed := strings.TrimSpace(name); trimmed != "" {
+		if len(trimmed) > models.ProjectNameMaxLength {
+			return models.ProjectFilter{}, ErrProjectNameTooLong
+		}
 		filter.Name = &trimmed
 	}
 	if trimmed := strings.TrimSpace(status); trimmed != "" {
 		parsed, err := models.ParseProjectStatus(trimmed)
 		if err != nil {
-			return models.ProjectFilter{}, err
+			return models.ProjectFilter{}, fmt.Errorf("%w: %q", ErrInvalidProjectStatus, trimmed)
 		}
 		filter.Status = &parsed
 	}

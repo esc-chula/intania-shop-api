@@ -2,17 +2,22 @@ package usecases
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
+	"github.com/esc-chula/intania-shop-api/internal/repositories"
 )
 
 type projectReaderStub struct {
-	today  models.Date
-	filter models.ProjectFilter
-	offset int32
-	limit  int32
+	today     models.Date
+	filter    models.ProjectFilter
+	offset    int32
+	limit     int32
+	detailErr error
 }
 
 func (stub *projectReaderStub) List(_ context.Context, today models.Date, filter models.ProjectFilter, offset, limit int32) ([]models.Project, int64, error) {
@@ -22,6 +27,9 @@ func (stub *projectReaderStub) List(_ context.Context, today models.Date, filter
 
 func (stub *projectReaderStub) Detail(_ context.Context, today models.Date, _ int64) (models.Project, error) {
 	stub.today = today
+	if stub.detailErr != nil {
+		return models.Project{}, stub.detailErr
+	}
 	return models.Project{ProjectID: 1}, nil
 }
 
@@ -76,12 +84,6 @@ func TestProjectServiceListOmitsBlankFilters(t *testing.T) {
 	}
 }
 
-func TestProjectServiceListRejectsUnknownStatus(t *testing.T) {
-	if _, err := NewProjectService(&projectReaderStub{}).List(context.Background(), "", "RUNNING", 1, 10); err == nil {
-		t.Fatal("expected an error for an unknown status filter")
-	}
-}
-
 func TestProjectServiceDerivesTodayInBangkok(t *testing.T) {
 	stub := &projectReaderStub{}
 	service := NewProjectService(stub)
@@ -96,8 +98,54 @@ func TestProjectServiceDerivesTodayInBangkok(t *testing.T) {
 	}
 }
 
-func TestProjectServiceDetailRejectsNonPositiveID(t *testing.T) {
-	if _, err := NewProjectService(&projectReaderStub{}).Detail(context.Background(), 0); err == nil {
-		t.Fatal("expected an error for a non-positive project ID")
+// The handler distinguishes 404 from 500 with errors.Is, so the repository
+// sentinel has to stay matchable through the use case wrapping.
+func TestProjectServiceDetailPreservesTheNotFoundSentinel(t *testing.T) {
+	stub := &projectReaderStub{detailErr: fmt.Errorf("get project: %w", repositories.ErrProjectNotFound)}
+
+	_, err := NewProjectService(stub).Detail(context.Background(), 7)
+	if !errors.Is(err, repositories.ErrProjectNotFound) {
+		t.Fatalf("err=%v, want it to match %v", err, repositories.ErrProjectNotFound)
+	}
+}
+
+func TestProjectServiceReportsTypedValidationFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		call func(*ProjectService) error
+		want error
+	}{
+		{
+			name: "unknown status",
+			call: func(service *ProjectService) error {
+				_, err := service.List(context.Background(), "", "RUNNING", 1, 10)
+				return err
+			},
+			want: ErrInvalidProjectStatus,
+		},
+		{
+			name: "name filter longer than a project name",
+			call: func(service *ProjectService) error {
+				_, err := service.List(context.Background(), strings.Repeat("a", models.ProjectNameMaxLength+1), "", 1, 10)
+				return err
+			},
+			want: ErrProjectNameTooLong,
+		},
+		{
+			name: "non-positive ID",
+			call: func(service *ProjectService) error {
+				_, err := service.Detail(context.Background(), 0)
+				return err
+			},
+			want: ErrInvalidProjectID,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(NewProjectService(&projectReaderStub{})); !errors.Is(err, test.want) {
+				t.Fatalf("err=%v, want it to match %v", err, test.want)
+			}
+		})
 	}
 }

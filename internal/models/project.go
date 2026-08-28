@@ -63,6 +63,23 @@ func ParseProjectStatus(value string) (ProjectStatus, error) {
 	}
 }
 
+// ProjectAPIErrorCode is the machine-readable code carried by every
+// Project/POS error response.
+type ProjectAPIErrorCode string
+
+const (
+	// ProjectErrorValidation reports a rejected request parameter.
+	ProjectErrorValidation ProjectAPIErrorCode = "VALIDATION_ERROR"
+	// ProjectErrorNotFound reports a project that does not exist.
+	ProjectErrorNotFound ProjectAPIErrorCode = "PROJECT_NOT_FOUND"
+	// ProjectErrorInternal reports an unexpected server failure.
+	ProjectErrorInternal ProjectAPIErrorCode = "INTERNAL_ERROR"
+)
+
+// ProjectNameMaxLength is the longest accepted project name, matching the
+// projects.name column and the shared contract.
+const ProjectNameMaxLength = 150
+
 // ProjectFilter narrows a project listing before pagination is applied.
 type ProjectFilter struct {
 	Name   *string
