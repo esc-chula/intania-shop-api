@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/esc-chula/intania-shop-api/internal/migrations"
 	"github.com/esc-chula/intania-shop-api/internal/models"
@@ -285,5 +286,76 @@ func TestProjectRepositoryListAppliesFiltersBeforePagination(t *testing.T) {
 	}
 	if narrowTotal != 1 {
 		t.Fatalf("narrowed total=%d want 1", narrowTotal)
+	}
+}
+
+// The listing derives status in SQL, while models.ProjectStatusFor states the
+// same rule in Go. Nothing in the type system holds the two together, so this
+// walks a date range across every seeded project and fails the moment the
+// database disagrees with the domain rule.
+func TestProjectRepositoryStatusMatchesTheDomainRule(t *testing.T) {
+	pool := projectTestPool(t)
+	seedProjects(t, pool)
+	repository := repositories.NewProjectRepository(pool)
+
+	for dayOffset := range 200 {
+		today := models.NewDate(time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, dayOffset))
+		projects, _, err := repository.List(context.Background(), today, models.ProjectFilter{}, 0, 100)
+		if err != nil {
+			t.Fatalf("list projects on %s: %v", today, err)
+		}
+		for _, project := range projects {
+			want := models.ProjectStatusFor(project.StartDate, project.EndDate, today)
+			if project.Status != want {
+				t.Fatalf("on %s, project %q: SQL says %q, models.ProjectStatusFor says %q",
+					today, project.Name, project.Status, want)
+			}
+		}
+	}
+}
+
+func TestProjectRepositoryListMatchesNameWildcardsLiterally(t *testing.T) {
+	pool := projectTestPool(t)
+	seedProjects(t, pool)
+	ctx := context.Background()
+
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO projects(name, start_date, end_date) VALUES ($1, DATE '2026-08-01', DATE '2026-08-02')`,
+		"50% off booth"); err != nil {
+		t.Fatalf("insert project with a wildcard in its name: %v", err)
+	}
+
+	repository := repositories.NewProjectRepository(pool)
+	for _, filter := range []string{"50%", "_"} {
+		t.Run(filter, func(t *testing.T) {
+			name := filter
+			projects, total, err := repository.List(ctx, projectDate(t, projectToday), models.ProjectFilter{Name: &name}, 0, 10)
+			if err != nil {
+				t.Fatalf("list projects: %v", err)
+			}
+			// "50%" matches only the project containing it; "_" matches nothing,
+			// rather than every project as an unescaped wildcard would.
+			want := 0
+			if filter == "50%" {
+				want = 1
+			}
+			if int(total) != want || len(projects) != want {
+				t.Fatalf("filter %q matched total=%d rows=%d, want %d", filter, total, len(projects), want)
+			}
+		})
+	}
+}
+
+func TestProjectRepositoryListReportsTheTotalPastTheLastPage(t *testing.T) {
+	pool := projectTestPool(t)
+	seedProjects(t, pool)
+
+	projects, total, err := repositories.NewProjectRepository(pool).List(
+		context.Background(), projectDate(t, projectToday), models.ProjectFilter{}, 100, 10)
+	if err != nil {
+		t.Fatalf("list projects: %v", err)
+	}
+	if len(projects) != 0 || total != 5 {
+		t.Fatalf("rows=%d total=%d, want 0 and 5", len(projects), total)
 	}
 }
