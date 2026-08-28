@@ -10,14 +10,8 @@ CREATE TABLE projects (
     CONSTRAINT chk_project_dates CHECK (start_date <= end_date)
 );
 
-ALTER TABLE orders
-  ADD COLUMN project_id BIGINT
-    REFERENCES projects(project_id)
-    ON DELETE RESTRICT;
-
-CREATE INDEX idx_orders_project_id ON orders(project_id);
+CREATE INDEX idx_projects_listing ON projects(created_at DESC, project_id DESC);
 
 -- +goose Down
-DROP INDEX IF EXISTS idx_orders_project_id;
-ALTER TABLE orders DROP COLUMN IF EXISTS project_id;
+DROP INDEX IF EXISTS idx_projects_listing;
 DROP TABLE IF EXISTS projects;
