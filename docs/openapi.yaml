@@ -18,7 +18,7 @@ tags:
   - { name: Products, description: "Admin-only product catalogue" }
   - { name: Inventory }
   - { name: Uploads }
-  - { name: Projects, description: "Admin-only event project administration; the read operations are implemented and the write operations are PLANNED" }
+  - { name: Projects, description: "Admin-only event project administration" }
   - { name: Project Products, description: "PLANNED — project catalogue selection and pricing; not implemented" }
   - { name: Project Promotions, description: "PLANNED — project-scoped pricing promotions; not implemented" }
   - { name: POS, description: "PLANNED — event POS catalogue, quotation, and checkout; not implemented" }
@@ -333,7 +333,7 @@ paths:
     post:
       operationId: createProject
       tags: [Projects]
-      summary: Create a project (PLANNED)
+      summary: Create a project
       description: Admin only. A single-day project repeats `start_date` as its `end_date`.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
@@ -360,8 +360,8 @@ paths:
     put:
       operationId: updateProject
       tags: [Projects]
-      summary: Update a project (PLANNED)
-      description: Admin only. Name and description remain correctable; sale dates become immutable after the first project order.
+      summary: Update a project
+      description: Admin only. Every field is replaced, so an omitted `description` is cleared. Locking sale dates after the first project order is PLANNED and not enforced yet.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
       responses:
@@ -375,7 +375,7 @@ paths:
     delete:
       operationId: deleteProject
       tags: [Projects]
-      summary: Delete a project with no orders (PLANNED)
+      summary: Delete a project with no orders
       description: Admin only. Configuration is deleted with the project. A project with any order returns `PROJECT_HAS_ORDERS`.
       security: [{ bearerAuth: [] }]
       responses:

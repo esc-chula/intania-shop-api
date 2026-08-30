@@ -42,11 +42,7 @@ func (service *ProjectAdminService) Create(ctx context.Context, input models.Pro
 	if err != nil {
 		return models.Project{}, err
 	}
-	project, err := service.projects.Create(ctx, service.today(), validated)
-	if err != nil {
-		return models.Project{}, fmt.Errorf("create project: %w", err)
-	}
-	return project, nil
+	return service.projects.Create(ctx, service.today(), validated)
 }
 
 // Update replaces the editable fields of an existing project. Every field is
@@ -59,11 +55,7 @@ func (service *ProjectAdminService) Update(ctx context.Context, projectID int64,
 	if err != nil {
 		return models.Project{}, err
 	}
-	project, err := service.projects.Update(ctx, service.today(), projectID, validated)
-	if err != nil {
-		return models.Project{}, fmt.Errorf("update project: %w", err)
-	}
-	return project, nil
+	return service.projects.Update(ctx, service.today(), projectID, validated)
 }
 
 // Delete permanently removes a project.
@@ -71,10 +63,7 @@ func (service *ProjectAdminService) Delete(ctx context.Context, projectID int64)
 	if projectID <= 0 {
 		return ErrInvalidProjectID
 	}
-	if err := service.projects.Delete(ctx, projectID); err != nil {
-		return fmt.Errorf("delete project: %w", err)
-	}
-	return nil
+	return service.projects.Delete(ctx, projectID)
 }
 
 func (service *ProjectAdminService) today() models.Date {
@@ -86,32 +75,32 @@ func (service *ProjectAdminService) today() models.Date {
 // because that is how the projects table measures its columns.
 func validateProjectInput(input models.ProjectInput) (models.ProjectInput, error) {
 	if input.Name == nil {
-		return input, ProjectValidationError{Message: "Project name is required"}
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project name is required"}
 	}
 	name := strings.TrimSpace(*input.Name)
 	if name == "" {
-		return input, ProjectValidationError{Message: "Project name must not be empty"}
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project name must not be empty"}
 	}
 	if utf8.RuneCountInString(name) > models.ProjectNameMaxLength {
-		return input, ProjectValidationError{
+		return models.ProjectInput{}, ProjectValidationError{
 			Message: fmt.Sprintf("Project name must be at most %d characters", models.ProjectNameMaxLength),
 		}
 	}
 	input.Name = &name
 
 	if input.Description != nil && utf8.RuneCountInString(*input.Description) > models.ProjectDescriptionMaxLength {
-		return input, ProjectValidationError{
+		return models.ProjectInput{}, ProjectValidationError{
 			Message: fmt.Sprintf("Project description must be at most %d characters", models.ProjectDescriptionMaxLength),
 		}
 	}
 	if input.StartDate == nil {
-		return input, ProjectValidationError{Message: "Project start date is required"}
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project start date is required"}
 	}
 	if input.EndDate == nil {
-		return input, ProjectValidationError{Message: "Project end date is required"}
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project end date is required"}
 	}
 	if input.EndDate.Before(input.StartDate.Time) {
-		return input, ProjectValidationError{Message: "Project end date must not be earlier than the start date"}
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project end date must not be earlier than the start date"}
 	}
 	return input, nil
 }
