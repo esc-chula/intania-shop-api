@@ -101,13 +101,7 @@ func (repository *ProjectRepository) List(ctx context.Context, today models.Date
 
 // Detail returns a single project with its derived status and order count.
 func (repository *ProjectRepository) Detail(ctx context.Context, today models.Date, projectID int64) (models.Project, error) {
-	rows, err := repository.pool.Query(ctx, detailProjectQuery, today.Time, projectID)
-	if err != nil {
-		return models.Project{}, fmt.Errorf("get project: %w", err)
-	}
-	project, err := pgx.CollectExactlyOneRow(rows, func(row pgx.CollectableRow) (models.Project, error) {
-		return scanProject(row)
-	})
+	project, err := scanProject(repository.pool.QueryRow(ctx, detailProjectQuery, today.Time, projectID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.Project{}, ErrProjectNotFound
 	}
