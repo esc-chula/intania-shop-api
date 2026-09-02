@@ -28,15 +28,31 @@ type ProjectReader interface {
 	Detail(context.Context, models.Date, int64) (models.Project, error)
 }
 
-// ProjectService applies query rules to project reads.
-type ProjectService struct {
-	projects ProjectReader
-	now      func() time.Time
+// ProjectValidationError reports a rejected create or update payload. It
+// carries the message written for the API client, so that the transport can
+// pass it through instead of restating every rule.
+type ProjectValidationError struct{ Message string }
+
+// Error returns the client-facing validation message.
+func (err ProjectValidationError) Error() string { return err.Message }
+
+// ProjectWriter creates, updates, and deletes projects.
+type ProjectWriter interface {
+	Create(context.Context, models.Date, models.ProjectInput) (models.Project, error)
+	Update(context.Context, models.Date, int64, models.ProjectInput) (models.Project, error)
+	Delete(context.Context, int64) error
 }
 
-// NewProjectService constructs the project query use case.
-func NewProjectService(projects ProjectReader) *ProjectService {
-	return &ProjectService{projects: projects, now: time.Now}
+// ProjectService applies query rules to project reads.
+type ProjectService struct {
+	reader ProjectReader
+	writer ProjectWriter
+	now    func() time.Time
+}
+
+// NewProjectService constructs the project use case.
+func NewProjectService(reader ProjectReader, writer ProjectWriter) *ProjectService {
+	return &ProjectService{reader: reader, writer: writer, now: time.Now}
 }
 
 // List returns a filtered, paginated page of projects. Filters are applied
@@ -48,7 +64,7 @@ func (service *ProjectService) List(ctx context.Context, name, status string, pa
 	}
 
 	page, pageSize = normalizePage(page, pageSize)
-	projects, total, err := service.projects.List(ctx, service.today(), filter, (page-1)*pageSize, pageSize)
+	projects, total, err := service.reader.List(ctx, service.today(), filter, (page-1)*pageSize, pageSize)
 	if err != nil {
 		return models.ProjectListResponse{}, fmt.Errorf("list projects: %w", err)
 	}
@@ -62,7 +78,7 @@ func (service *ProjectService) Detail(ctx context.Context, projectID int64) (mod
 	if projectID <= 0 {
 		return models.Project{}, ErrInvalidProjectID
 	}
-	project, err := service.projects.Detail(ctx, service.today(), projectID)
+	project, err := service.reader.Detail(ctx, service.today(), projectID)
 	if err != nil {
 		return models.Project{}, fmt.Errorf("get project detail: %w", err)
 	}
@@ -89,4 +105,69 @@ func buildProjectFilter(name, status string) (models.ProjectFilter, error) {
 		filter.Status = &parsed
 	}
 	return filter, nil
+}
+
+// Create persists a new project and returns it with its derived status.
+func (service *ProjectService) Create(ctx context.Context, input models.ProjectInput) (models.Project, error) {
+	validated, err := validateProjectInput(input)
+	if err != nil {
+		return models.Project{}, err
+	}
+	return service.writer.Create(ctx, service.today(), validated)
+}
+
+// Update replaces the editable fields of an existing project. Every field is
+// required, so an update is a complete replacement rather than a patch.
+func (service *ProjectService) Update(ctx context.Context, projectID int64, input models.ProjectInput) (models.Project, error) {
+	if projectID <= 0 {
+		return models.Project{}, ErrInvalidProjectID
+	}
+	validated, err := validateProjectInput(input)
+	if err != nil {
+		return models.Project{}, err
+	}
+	return service.writer.Update(ctx, service.today(), projectID, validated)
+}
+
+// Delete permanently removes a project.
+func (service *ProjectService) Delete(ctx context.Context, projectID int64) error {
+	if projectID <= 0 {
+		return ErrInvalidProjectID
+	}
+	return service.writer.Delete(ctx, projectID)
+}
+
+// validateProjectInput enforces the create and update rules and returns the
+// normalized payload that is persisted. Lengths are counted in characters
+// because that is how the projects table measures its columns.
+func validateProjectInput(input models.ProjectInput) (models.ProjectInput, error) {
+	if input.Name == nil {
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project name is required"}
+	}
+	name := strings.TrimSpace(*input.Name)
+	if name == "" {
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project name must not be empty"}
+	}
+	if utf8.RuneCountInString(name) > models.ProjectNameMaxLength {
+		return models.ProjectInput{}, ProjectValidationError{
+			Message: fmt.Sprintf("Project name must be at most %d characters", models.ProjectNameMaxLength),
+		}
+	}
+	input.Name = &name
+
+	if input.Description != nil && utf8.RuneCountInString(*input.Description) > models.ProjectDescriptionMaxLength {
+		return models.ProjectInput{}, ProjectValidationError{
+			Message: fmt.Sprintf("Project description must be at most %d characters", models.ProjectDescriptionMaxLength),
+		}
+	}
+	if input.StartDate == nil {
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project start date is required"}
+	}
+	if input.EndDate == nil {
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project end date is required"}
+	}
+	if input.EndDate.Before(input.StartDate.Time) {
+		return models.ProjectInput{}, ProjectValidationError{Message: "Project end date must not be earlier than the start date"}
+	}
+	return input, nil
 }

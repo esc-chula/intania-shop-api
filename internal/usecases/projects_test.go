@@ -47,7 +47,7 @@ func TestProjectServiceListNormalizesPagination(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			stub := &projectReaderStub{}
-			response, err := NewProjectService(stub).List(context.Background(), "", "", test.page, test.pageSize)
+			response, err := NewProjectService(stub, nil).List(context.Background(), "", "", test.page, test.pageSize)
 			if err != nil {
 				t.Fatalf("list projects: %v", err)
 			}
@@ -63,7 +63,7 @@ func TestProjectServiceListNormalizesPagination(t *testing.T) {
 
 func TestProjectServiceListBuildsFilters(t *testing.T) {
 	stub := &projectReaderStub{}
-	if _, err := NewProjectService(stub).List(context.Background(), "  fair  ", "ACTIVE", 1, 10); err != nil {
+	if _, err := NewProjectService(stub, nil).List(context.Background(), "  fair  ", "ACTIVE", 1, 10); err != nil {
 		t.Fatalf("list projects: %v", err)
 	}
 	if stub.filter.Name == nil || *stub.filter.Name != "fair" {
@@ -76,7 +76,7 @@ func TestProjectServiceListBuildsFilters(t *testing.T) {
 
 func TestProjectServiceListOmitsBlankFilters(t *testing.T) {
 	stub := &projectReaderStub{}
-	if _, err := NewProjectService(stub).List(context.Background(), "   ", "", 1, 10); err != nil {
+	if _, err := NewProjectService(stub, nil).List(context.Background(), "   ", "", 1, 10); err != nil {
 		t.Fatalf("list projects: %v", err)
 	}
 	if stub.filter.Name != nil || stub.filter.Status != nil {
@@ -86,7 +86,7 @@ func TestProjectServiceListOmitsBlankFilters(t *testing.T) {
 
 func TestProjectServiceDerivesTodayInBangkok(t *testing.T) {
 	stub := &projectReaderStub{}
-	service := NewProjectService(stub)
+	service := NewProjectService(stub, nil)
 	// 23:30 UTC is already the next calendar day in Bangkok.
 	service.now = func() time.Time { return time.Date(2026, time.August, 27, 23, 30, 0, 0, time.UTC) }
 
@@ -103,7 +103,7 @@ func TestProjectServiceDerivesTodayInBangkok(t *testing.T) {
 func TestProjectServiceDetailPreservesTheNotFoundSentinel(t *testing.T) {
 	stub := &projectReaderStub{detailErr: fmt.Errorf("get project: %w", repositories.ErrProjectNotFound)}
 
-	_, err := NewProjectService(stub).Detail(context.Background(), 7)
+	_, err := NewProjectService(stub, nil).Detail(context.Background(), 7)
 	if !errors.Is(err, repositories.ErrProjectNotFound) {
 		t.Fatalf("err=%v, want it to match %v", err, repositories.ErrProjectNotFound)
 	}
@@ -143,7 +143,7 @@ func TestProjectServiceReportsTypedValidationFailures(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if err := test.call(NewProjectService(&projectReaderStub{})); !errors.Is(err, test.want) {
+			if err := test.call(NewProjectService(&projectReaderStub{}, nil)); !errors.Is(err, test.want) {
 				t.Fatalf("err=%v, want it to match %v", err, test.want)
 			}
 		})

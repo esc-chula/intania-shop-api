@@ -46,7 +46,7 @@ func projectRouter(stub *projectServiceStub) chi.Router {
 	router := chi.NewRouter()
 	// RequestID supplies the identifier the error envelope has to carry.
 	router.Use(middlewares.RequestID(slog.New(slog.NewTextHandler(io.Discard, nil))))
-	NewProjectHandler(stub).Register(router)
+	NewProjectHandler(stub, nil).Register(router)
 	return router
 }
 

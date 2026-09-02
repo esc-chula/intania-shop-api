@@ -81,7 +81,7 @@ func TestProjectAdminServiceRejectsInvalidInput(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			stub := &projectWriterStub{}
-			service := usecases.NewProjectAdminService(stub)
+			service := usecases.NewProjectService(nil, stub)
 
 			_, err := service.Create(context.Background(), test.input)
 			assertProjectValidationError(t, err, test.want)
@@ -121,7 +121,7 @@ func TestProjectAdminServiceCreatesSingleDayAndMultiDayProjects(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			stub := &projectWriterStub{}
-			project, err := usecases.NewProjectAdminService(stub).
+			project, err := usecases.NewProjectService(nil, stub).
 				Create(context.Background(), projectInput(t, "Engineering Fair", test.startDate, test.endDate))
 			if err != nil {
 				t.Fatalf("create project: %v", err)
@@ -141,7 +141,7 @@ func TestProjectAdminServiceCreatesSingleDayAndMultiDayProjects(t *testing.T) {
 // two projects that look identical in the listing.
 func TestProjectAdminServiceTrimsTheName(t *testing.T) {
 	stub := &projectWriterStub{}
-	if _, err := usecases.NewProjectAdminService(stub).
+	if _, err := usecases.NewProjectService(nil, stub).
 		Create(context.Background(), projectInput(t, "  Engineering Fair  ", "2026-09-05", "2026-09-07")); err != nil {
 		t.Fatalf("create project: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestProjectAdminServiceTrimsTheName(t *testing.T) {
 // resolve "today" the same way the query path does.
 func TestProjectAdminServiceResolvesTodayInBangkok(t *testing.T) {
 	stub := &projectWriterStub{}
-	if _, err := usecases.NewProjectAdminService(stub).
+	if _, err := usecases.NewProjectService(nil, stub).
 		Create(context.Background(), projectInput(t, "Engineering Fair", "2026-09-05", "2026-09-07")); err != nil {
 		t.Fatalf("create project: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestProjectAdminServiceResolvesTodayInBangkok(t *testing.T) {
 
 func TestProjectAdminServiceRejectsNonPositiveIDs(t *testing.T) {
 	stub := &projectWriterStub{}
-	service := usecases.NewProjectAdminService(stub)
+	service := usecases.NewProjectService(nil, stub)
 	input := projectInput(t, "Engineering Fair", "2026-09-05", "2026-09-07")
 
 	if _, err := service.Update(context.Background(), 0, input); !errors.Is(err, usecases.ErrInvalidProjectID) {
@@ -183,7 +183,7 @@ func TestProjectAdminServiceRejectsNonPositiveIDs(t *testing.T) {
 // to keep them inspectable through its own wrapping.
 func TestProjectAdminServicePreservesRepositoryErrors(t *testing.T) {
 	stub := &projectWriterStub{err: repositories.ErrProjectNotFound}
-	service := usecases.NewProjectAdminService(stub)
+	service := usecases.NewProjectService(nil, stub)
 
 	if _, err := service.Update(context.Background(), 7, projectInput(t, "Engineering Fair", "2026-09-05", "2026-09-07")); !errors.Is(err, repositories.ErrProjectNotFound) {
 		t.Errorf("update err=%v, want ErrProjectNotFound", err)

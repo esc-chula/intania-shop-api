@@ -50,7 +50,7 @@ func projectAdminRouter(stub *projectMutatorStub) chi.Router {
 	router := chi.NewRouter()
 	// RequestID supplies the identifier the error envelope has to carry.
 	router.Use(middlewares.RequestID(slog.New(slog.NewTextHandler(io.Discard, nil))))
-	NewProjectAdminHandler(stub).Register(router)
+	NewProjectHandler(nil, stub).Register(router)
 	return router
 }
 

@@ -59,8 +59,9 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	productHandler := handlers.NewProductHandler(usecases.NewProductService(repositories.NewProductRepository(pool)))
 	productAdminHandler := handlers.NewProductAdminHandler(usecases.NewProductAdminService(repositories.NewProductRepository(pool)))
 	inventoryHandler := handlers.NewInventoryHandler(usecases.NewInventoryService(repositories.NewInventoryRepository(pool)))
-	projectHandler := handlers.NewProjectHandler(usecases.NewProjectService(repositories.NewProjectRepository(pool)))
-	projectAdminHandler := handlers.NewProjectAdminHandler(usecases.NewProjectAdminService(repositories.NewProjectRepository(pool)))
+	projects := repositories.NewProjectRepository(pool)
+	projectService := usecases.NewProjectService(projects, projects)
+	projectHandler := handlers.NewProjectHandler(projectService, projectService)
 	uploadHandler := handlers.NewUploadHandler(uploader)
 
 	handler := server.NewHandler(server.Dependencies{
@@ -72,7 +73,6 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		ProductAdminHandler: productAdminHandler,
 		InventoryHandler:    inventoryHandler,
 		ProjectHandler:      projectHandler,
-		ProjectAdminHandler: projectAdminHandler,
 		UploadHandler:       uploadHandler,
 		TokenVerifier:       tokens,
 	})

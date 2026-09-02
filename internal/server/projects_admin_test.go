@@ -44,9 +44,8 @@ func TestProjectRoutesRequireAdmin(t *testing.T) {
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		// Both handlers claim /projects, so they are mounted together here to
 		// prove the query and mutation routes coexist on one router.
-		ProjectHandler:      handlers.NewProjectHandler(projectQueryStub{}),
-		ProjectAdminHandler: handlers.NewProjectAdminHandler(projectMutationStub{}),
-		TokenVerifier:       productTokenVerifier{},
+		ProjectHandler: handlers.NewProjectHandler(projectQueryStub{}, projectMutationStub{}),
+		TokenVerifier:  productTokenVerifier{},
 	})
 	const body = `{"name":"Engineering Fair","start_date":"2026-09-05","end_date":"2026-09-07"}`
 	tests := []struct {
