@@ -22,10 +22,12 @@ var (
 	ErrInvalidProjectID = errors.New("project ID must be positive")
 )
 
-// ProjectReader reads projects with their derived status and order count.
-type ProjectReader interface {
+type ProjectStore interface {
 	List(context.Context, models.Date, models.ProjectFilter, int32, int32) ([]models.Project, int64, error)
 	Detail(context.Context, models.Date, int64) (models.Project, error)
+	Create(context.Context, models.Date, models.ProjectInput) (models.Project, error)
+	Update(context.Context, models.Date, int64, models.ProjectInput) (models.Project, error)
+	Delete(context.Context, int64) error
 }
 
 // ProjectValidationError reports a rejected create or update payload. It
@@ -36,23 +38,13 @@ type ProjectValidationError struct{ Message string }
 // Error returns the client-facing validation message.
 func (err ProjectValidationError) Error() string { return err.Message }
 
-// ProjectWriter creates, updates, and deletes projects.
-type ProjectWriter interface {
-	Create(context.Context, models.Date, models.ProjectInput) (models.Project, error)
-	Update(context.Context, models.Date, int64, models.ProjectInput) (models.Project, error)
-	Delete(context.Context, int64) error
-}
-
-// ProjectService applies query rules to project reads.
 type ProjectService struct {
-	reader ProjectReader
-	writer ProjectWriter
-	now    func() time.Time
+	store ProjectStore
+	now   func() time.Time
 }
 
-// NewProjectService constructs the project use case.
-func NewProjectService(reader ProjectReader, writer ProjectWriter) *ProjectService {
-	return &ProjectService{reader: reader, writer: writer, now: time.Now}
+func NewProjectService(store ProjectStore) *ProjectService {
+	return &ProjectService{store: store, now: time.Now}
 }
 
 // List returns a filtered, paginated page of projects. Filters are applied
@@ -64,7 +56,7 @@ func (service *ProjectService) List(ctx context.Context, name, status string, pa
 	}
 
 	page, pageSize = normalizePage(page, pageSize)
-	projects, total, err := service.reader.List(ctx, service.today(), filter, (page-1)*pageSize, pageSize)
+	projects, total, err := service.store.List(ctx, service.today(), filter, (page-1)*pageSize, pageSize)
 	if err != nil {
 		return models.ProjectListResponse{}, fmt.Errorf("list projects: %w", err)
 	}
@@ -78,7 +70,7 @@ func (service *ProjectService) Detail(ctx context.Context, projectID int64) (mod
 	if projectID <= 0 {
 		return models.Project{}, ErrInvalidProjectID
 	}
-	project, err := service.reader.Detail(ctx, service.today(), projectID)
+	project, err := service.store.Detail(ctx, service.today(), projectID)
 	if err != nil {
 		return models.Project{}, fmt.Errorf("get project detail: %w", err)
 	}
@@ -95,14 +87,14 @@ func buildProjectFilter(name, status string) (models.ProjectFilter, error) {
 		if utf8.RuneCountInString(trimmed) > models.ProjectNameMaxLength {
 			return models.ProjectFilter{}, ErrProjectNameTooLong
 		}
-		filter.Name = &trimmed
+		filter.Name = trimmed
 	}
 	if trimmed := strings.TrimSpace(status); trimmed != "" {
 		parsed, err := models.ParseProjectStatus(trimmed)
 		if err != nil {
 			return models.ProjectFilter{}, fmt.Errorf("%w: %q", ErrInvalidProjectStatus, trimmed)
 		}
-		filter.Status = &parsed
+		filter.Status = parsed
 	}
 	return filter, nil
 }
@@ -113,7 +105,7 @@ func (service *ProjectService) Create(ctx context.Context, input models.ProjectI
 	if err != nil {
 		return models.Project{}, err
 	}
-	return service.writer.Create(ctx, service.today(), validated)
+	return service.store.Create(ctx, service.today(), validated)
 }
 
 // Update replaces the editable fields of an existing project. Every field is
@@ -126,7 +118,7 @@ func (service *ProjectService) Update(ctx context.Context, projectID int64, inpu
 	if err != nil {
 		return models.Project{}, err
 	}
-	return service.writer.Update(ctx, service.today(), projectID, validated)
+	return service.store.Update(ctx, service.today(), projectID, validated)
 }
 
 // Delete permanently removes a project.
@@ -134,7 +126,7 @@ func (service *ProjectService) Delete(ctx context.Context, projectID int64) erro
 	if projectID <= 0 {
 		return ErrInvalidProjectID
 	}
-	return service.writer.Delete(ctx, projectID)
+	return service.store.Delete(ctx, projectID)
 }
 
 // validateProjectInput enforces the create and update rules and returns the

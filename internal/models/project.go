@@ -76,14 +76,13 @@ const (
 	ProjectErrorInternal ProjectAPIErrorCode = "INTERNAL_ERROR"
 )
 
-// ProjectNameMaxLength is the longest accepted project name, matching the
-// projects.name column and the shared contract.
 const ProjectNameMaxLength = 150
+const ProjectDescriptionMaxLength = 2000
+const ProjectErrorHasOrders ProjectAPIErrorCode = "PROJECT_HAS_ORDERS"
 
-// ProjectFilter narrows a project listing before pagination is applied.
 type ProjectFilter struct {
-	Name   *string
-	Status *ProjectStatus
+	Name   string
+	Status ProjectStatus
 }
 
 // ProjectListResponse is the paginated project listing response.
@@ -93,4 +92,11 @@ type ProjectListResponse struct {
 	Page       int32     `json:"page"`
 	PageSize   int32     `json:"page_size"`
 	TotalPages int32     `json:"total_pages"`
+}
+
+type ProjectInput struct {
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	StartDate   *Date   `json:"start_date"`
+	EndDate     *Date   `json:"end_date"`
 }

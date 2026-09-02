@@ -48,11 +48,8 @@ const projectColumns = `p.project_id, p.name, p.description, p.start_date, p.end
        p.created_at, p.updated_at, COALESCE(o.order_count, 0),
        ` + projectStatusExpression
 
-// projectFilterClause keeps both filters optional and independent so that name
-// and status can be combined. The name is matched literally: LIKE wildcards in
-// the filter are escaped by escapeLikePattern before the query runs.
-const projectFilterClause = ` WHERE ($2::text IS NULL OR p.name ILIKE '%' || $2 || '%' ESCAPE '\')
-  AND ($3::text IS NULL OR ` + projectStatusExpression + ` = $3)`
+const projectFilterClause = ` WHERE ($2::text = '' OR p.name ILIKE '%' || $2 || '%' ESCAPE '\')
+  AND ($3::text = '' OR ` + projectStatusExpression + ` = $3)`
 
 // listProjectsQuery reads the page and its filtered total together, so that
 // both describe the same snapshot of the table.
@@ -69,7 +66,8 @@ WHERE p.project_id = $2`
 
 // List returns one filtered, ordered page of projects and the filtered total.
 func (repository *ProjectRepository) List(ctx context.Context, today models.Date, filter models.ProjectFilter, offset, limit int32) ([]models.Project, int64, error) {
-	name, status := filterArguments(filter)
+	name := escapeLikePattern(filter.Name)
+	status := string(filter.Status)
 
 	rows, err := repository.pool.Query(ctx, listProjectsQuery, today.Time, name, status, offset, limit)
 	if err != nil {
@@ -112,7 +110,7 @@ func (repository *ProjectRepository) Detail(ctx context.Context, today models.Da
 	return project, nil
 }
 
-func (repository *ProjectRepository) count(ctx context.Context, today models.Date, name, status *string) (int64, error) {
+func (repository *ProjectRepository) count(ctx context.Context, today models.Date, name, status string) (int64, error) {
 	var total int64
 	if err := repository.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM projects p`+projectFilterClause, today.Time, name, status).Scan(&total); err != nil {
@@ -126,20 +124,6 @@ func (repository *ProjectRepository) count(ctx context.Context, today models.Dat
 func escapeLikePattern(value string) string {
 	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 	return replacer.Replace(value)
-}
-
-func filterArguments(filter models.ProjectFilter) (*string, *string) {
-	var name *string
-	if filter.Name != nil {
-		escaped := escapeLikePattern(*filter.Name)
-		name = &escaped
-	}
-	var status *string
-	if filter.Status != nil {
-		value := string(*filter.Status)
-		status = &value
-	}
-	return name, status
 }
 
 // rowScanner is the scan surface shared by pgx.Rows and pgx.CollectableRow.
