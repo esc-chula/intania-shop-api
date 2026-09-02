@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
 )
@@ -75,7 +76,7 @@ func (service *ProjectService) today() models.Date {
 func buildProjectFilter(name, status string) (models.ProjectFilter, error) {
 	var filter models.ProjectFilter
 	if trimmed := strings.TrimSpace(name); trimmed != "" {
-		if len(trimmed) > models.ProjectNameMaxLength {
+		if utf8.RuneCountInString(trimmed) > models.ProjectNameMaxLength {
 			return models.ProjectFilter{}, ErrProjectNameTooLong
 		}
 		filter.Name = &trimmed
