@@ -979,12 +979,17 @@ components:
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/ProjectProductAssignment" } }
     ProjectPromotionItemInput:
-      allOf:
-        - { $ref: "#/components/schemas/SellableItemReference" }
-        - type: object
-          required: [quantity]
-          properties:
-            quantity: { type: integer, format: int32, minimum: 1 }
+      type: object
+      additionalProperties: false
+      description: |
+        Public promotion item reference. If variant_id is omitted, it will be
+        treated as null and resolve to a variantless Project Product
+        assignment. Clients are recommended to send an explicit null.
+      required: [product_id, quantity]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+        variant_id: { type: [integer, "null"], format: int64, minimum: 1, description: Null or omission identifies a variantless product }
+        quantity: { type: integer, format: int32, minimum: 1 }
     ProjectPromotionMutationRequest:
       type: object
       additionalProperties: false
@@ -998,15 +1003,17 @@ components:
           uniqueItems: true
           items: { $ref: "#/components/schemas/ProjectPromotionItemInput" }
     ProjectPromotionItem:
-      allOf:
-        - { $ref: "#/components/schemas/ProjectPromotionItemInput" }
-        - type: object
-          required: [product_name, size, color, unit_price]
-          properties:
-            product_name: { type: string, maxLength: 150 }
-            size: { type: [string, "null"], maxLength: 20 }
-            color: { type: [string, "null"], maxLength: 50 }
-            unit_price: { $ref: "#/components/schemas/THBAmount" }
+      type: object
+      additionalProperties: false
+      required: [product_id, variant_id, quantity, product_name, size, color, unit_price]
+      properties:
+        product_id: { type: integer, format: int64, minimum: 1 }
+        variant_id: { type: [integer, "null"], format: int64, minimum: 1 }
+        quantity: { type: integer, format: int32, minimum: 1 }
+        product_name: { type: string, maxLength: 150 }
+        size: { type: [string, "null"], maxLength: 20 }
+        color: { type: [string, "null"], maxLength: 50 }
+        unit_price: { $ref: "#/components/schemas/THBAmount" }
     ProjectPromotion:
       type: object
       additionalProperties: false
