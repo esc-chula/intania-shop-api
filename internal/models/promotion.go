@@ -30,10 +30,9 @@ type ProjectPromotionMutationRequest struct {
 	Items          []ProjectPromotionItemInput `json:"items"`
 }
 
-// ProjectPromotionMutation is the non-JSON application command produced from
-// ProjectPromotionMutationRequest after required-field presence and money
-// decoding have been checked. PromotionPrice is a value because it is no
-// longer an optional JSON field.
+// ProjectPromotionMutation is the validated, non-JSON application command
+// produced by the Promotion use case from ProjectPromotionMutationRequest.
+// PromotionPrice is a value because it is no longer an optional JSON field.
 type ProjectPromotionMutation struct {
 	Name           string
 	PromotionPrice THBAmount

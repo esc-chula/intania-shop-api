@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -51,8 +50,8 @@ type PromotionReader interface {
 // promotion use case. Create and Update perform their resolution and writes
 // in one transaction.
 type PromotionWriter interface {
-	Create(context.Context, models.Date, int64, models.ProjectPromotionMutationRequest) (models.ProjectPromotion, error)
-	Update(context.Context, models.Date, int64, int64, models.ProjectPromotionMutationRequest) (models.ProjectPromotion, error)
+	Create(context.Context, models.Date, int64, models.ProjectPromotionMutation) (models.ProjectPromotion, error)
+	Update(context.Context, models.Date, int64, int64, models.ProjectPromotionMutation) (models.ProjectPromotion, error)
 	Delete(context.Context, models.Date, int64, int64) error
 }
 
@@ -138,12 +137,7 @@ func (repository *PromotionRepository) ResolveProjectProducts(ctx context.Contex
 // is expected to have passed use-case validation; database and arithmetic
 // checks remain defensive here because this method also forms the transaction
 // boundary for the mutation.
-func (repository *PromotionRepository) Create(ctx context.Context, today models.Date, projectID int64, input models.ProjectPromotionMutationRequest) (models.ProjectPromotion, error) {
-	mutation, err := validatePromotionMutationShape(input)
-	if err != nil {
-		return models.ProjectPromotion{}, err
-	}
-
+func (repository *PromotionRepository) Create(ctx context.Context, today models.Date, projectID int64, mutation models.ProjectPromotionMutation) (models.ProjectPromotion, error) {
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return models.ProjectPromotion{}, fmt.Errorf("begin promotion create: %w", err)
@@ -191,12 +185,7 @@ func (repository *PromotionRepository) Create(ctx context.Context, today models.
 }
 
 // Update replaces a promotion's complete item set atomically.
-func (repository *PromotionRepository) Update(ctx context.Context, today models.Date, projectID, promotionID int64, input models.ProjectPromotionMutationRequest) (models.ProjectPromotion, error) {
-	mutation, err := validatePromotionMutationShape(input)
-	if err != nil {
-		return models.ProjectPromotion{}, err
-	}
-
+func (repository *PromotionRepository) Update(ctx context.Context, today models.Date, projectID, promotionID int64, mutation models.ProjectPromotionMutation) (models.ProjectPromotion, error) {
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return models.ProjectPromotion{}, fmt.Errorf("begin promotion update: %w", err)
@@ -329,30 +318,6 @@ func lockPromotion(ctx context.Context, tx pgx.Tx, projectID, promotionID int64)
 	}
 
 	return nil
-}
-
-func validatePromotionMutationShape(input models.ProjectPromotionMutationRequest) (models.ProjectPromotionMutation, error) {
-	name := strings.TrimSpace(input.Name)
-	if name == "" {
-		return models.ProjectPromotionMutation{}, fmt.Errorf("promotion name must not be empty")
-	}
-	if utf8.RuneCountInString(name) > models.PromotionNameMaxLength {
-		return models.ProjectPromotionMutation{}, fmt.Errorf("promotion name must be at most %d characters", models.PromotionNameMaxLength)
-	}
-
-	if input.PromotionPrice == nil {
-		return models.ProjectPromotionMutation{}, fmt.Errorf("promotion price is required")
-	}
-
-	if len(input.Items) == 0 {
-		return models.ProjectPromotionMutation{}, fmt.Errorf("promotion must contain at least one item")
-	}
-
-	return models.ProjectPromotionMutation{
-		Name:           name,
-		PromotionPrice: *input.PromotionPrice,
-		Items:          input.Items,
-	}, nil
 }
 
 func validatePromotionPrice(input models.ProjectPromotionMutation, assignments []ProjectProductAssignment) error {
