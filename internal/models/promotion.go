@@ -30,6 +30,16 @@ type ProjectPromotionMutationRequest struct {
 	Items          []ProjectPromotionItemInput `json:"items"`
 }
 
+// ProjectPromotionMutation is the non-JSON application command produced from
+// ProjectPromotionMutationRequest after required-field presence and money
+// decoding have been checked. PromotionPrice is a value because it is no
+// longer an optional JSON field.
+type ProjectPromotionMutation struct {
+	Name           string
+	PromotionPrice THBAmount
+	Items          []ProjectPromotionItemInput
+}
+
 // ProjectPromotionItem is an enriched promotion item returned by the API.
 // Product and variant details are hydrated from current catalogue and project
 // product data; they are not persisted in promotion_items.
