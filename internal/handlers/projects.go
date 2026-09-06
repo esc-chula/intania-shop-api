@@ -21,6 +21,8 @@ type ProjectService interface {
 	Update(context.Context, int64, models.ProjectInput) (models.Project, error)
 	Delete(context.Context, int64) error
 	ReplaceProducts(context.Context, int64, []models.ProjectProductAssignmentInput) (models.ProjectProductsResponse, error)
+	ListProductCandidates(context.Context, int64, string, string, int32, int32) (models.ProjectProductCandidateListResponse, error)
+	ListProjectProducts(context.Context, int64) (models.ProjectProductsResponse, error)
 }
 
 type ProjectHandler struct {
@@ -39,6 +41,8 @@ func (handler *ProjectHandler) Register(router chi.Router) {
 	router.Put("/projects/{project_id}", handler.update)
 	router.Delete("/projects/{project_id}", handler.delete)
 	router.Put("/projects/{project_id}/products", handler.replaceProducts)
+	router.Get("/projects/{project_id}/product-candidates", handler.listProductCandidates)
+	router.Get("/projects/{project_id}/products", handler.listProjectProducts)
 }
 
 func (handler *ProjectHandler) replaceProducts(writer http.ResponseWriter, request *http.Request) {
@@ -133,6 +137,35 @@ func (handler *ProjectHandler) delete(writer http.ResponseWriter, request *http.
 		return
 	}
 	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (handler *ProjectHandler) listProductCandidates(writer http.ResponseWriter, request *http.Request) {
+	projectID, ok := projectPathID(writer, request)
+	if !ok {
+		return
+	}
+	query := request.URL.Query()
+	data, err := handler.projects.ListProductCandidates(request.Context(), projectID,
+		query.Get("name"), query.Get("category"),
+		queryInt(request, "page", 1), queryInt(request, "page_size", 10))
+	if err != nil {
+		writeProjectErrorResponse(writer, request, err, "Unable to list product candidates")
+		return
+	}
+	writeSuccess(writer, http.StatusOK, data)
+}
+
+func (handler *ProjectHandler) listProjectProducts(writer http.ResponseWriter, request *http.Request) {
+	projectID, ok := projectPathID(writer, request)
+	if !ok {
+		return
+	}
+	data, err := handler.projects.ListProjectProducts(request.Context(), projectID)
+	if err != nil {
+		writeProjectErrorResponse(writer, request, err, "Unable to list project products")
+		return
+	}
+	writeSuccess(writer, http.StatusOK, data)
 }
 
 // projectPathID reads the project ID from the path. Only the parse is a

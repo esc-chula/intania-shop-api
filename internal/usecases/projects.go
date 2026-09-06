@@ -31,6 +31,8 @@ type ProjectStore interface {
 	Update(context.Context, models.Date, int64, models.ProjectInput) (models.Project, error)
 	Delete(context.Context, int64) error
 	ReplaceProducts(context.Context, models.Date, int64, []models.ProjectProductAssignmentInput) ([]models.ProjectProductAssignment, error)
+	ListProductCandidates(context.Context, int64, models.ProjectProductFilter, int32, int32) ([]models.ProjectProductCandidate, int64, error)
+	ListProjectProducts(context.Context, int64) ([]models.ProjectProductAssignment, error)
 }
 
 // numeric(10,2) permits up to eight integral digits. Keeping this bound in
@@ -200,4 +202,63 @@ func validateProjectInput(input models.ProjectInput) (models.ProjectInput, error
 		return models.ProjectInput{}, ProjectValidationError{Message: "Project end date must not be earlier than the start date"}
 	}
 	return input, nil
+}
+
+// ListProductCandidates returns a filtered, paginated page of products that can
+// be added to the project, each with its sellable items and the project's
+// current selection. Filters are applied before pagination, so the reported
+// total counts only matching products.
+func (service *ProjectService) ListProductCandidates(ctx context.Context, projectID int64, name, category string, page, pageSize int32) (models.ProjectProductCandidateListResponse, error) {
+	if projectID <= 0 {
+		return models.ProjectProductCandidateListResponse{}, ErrInvalidProjectID
+	}
+	filter, err := buildProjectProductFilter(name, category)
+	if err != nil {
+		return models.ProjectProductCandidateListResponse{}, err
+	}
+
+	page, pageSize = normalizePage(page, pageSize)
+	products, total, err := service.store.ListProductCandidates(ctx, projectID, filter, (page-1)*pageSize, pageSize)
+	if err != nil {
+		return models.ProjectProductCandidateListResponse{}, fmt.Errorf("list product candidates: %w", err)
+	}
+	return models.ProjectProductCandidateListResponse{
+		Products: products, Total: total, Page: page, PageSize: pageSize, TotalPages: totalPages(total, pageSize),
+	}, nil
+}
+
+// ListProjectProducts returns the sellable items assigned to the project.
+func (service *ProjectService) ListProjectProducts(ctx context.Context, projectID int64) (models.ProjectProductsResponse, error) {
+	if projectID <= 0 {
+		return models.ProjectProductsResponse{}, ErrInvalidProjectID
+	}
+	items, err := service.store.ListProjectProducts(ctx, projectID)
+	if err != nil {
+		return models.ProjectProductsResponse{}, fmt.Errorf("list project products: %w", err)
+	}
+	return models.ProjectProductsResponse{Items: items}, nil
+}
+
+// buildProjectProductFilter normalizes the candidate filters. The two are
+// independent and combine, and their lengths are bounded by the product
+// columns they are compared against.
+func buildProjectProductFilter(name, category string) (models.ProjectProductFilter, error) {
+	var filter models.ProjectProductFilter
+	if trimmed := strings.TrimSpace(name); trimmed != "" {
+		if utf8.RuneCountInString(trimmed) > models.ProductNameFilterMaxLength {
+			return models.ProjectProductFilter{}, ProjectValidationError{
+				Message: fmt.Sprintf("Product name filter must be at most %d characters", models.ProductNameFilterMaxLength),
+			}
+		}
+		filter.Name = trimmed
+	}
+	if trimmed := strings.TrimSpace(category); trimmed != "" {
+		if utf8.RuneCountInString(trimmed) > models.ProductCategoryFilterMaxLength {
+			return models.ProjectProductFilter{}, ProjectValidationError{
+				Message: fmt.Sprintf("Product category filter must be at most %d characters", models.ProductCategoryFilterMaxLength),
+			}
+		}
+		filter.Category = trimmed
+	}
+	return filter, nil
 }

@@ -35,6 +35,14 @@ func (stub *projectProductStoreStub) ReplaceProducts(_ context.Context, _ models
 	return []models.ProjectProductAssignment{}, nil
 }
 
+func (stub *projectProductStoreStub) ListProductCandidates(context.Context, int64, models.ProjectProductFilter, int32, int32) ([]models.ProjectProductCandidate, int64, error) {
+	return nil, 0, nil
+}
+
+func (stub *projectProductStoreStub) ListProjectProducts(context.Context, int64) ([]models.ProjectProductAssignment, error) {
+	return nil, nil
+}
+
 func TestReplaceProductsValidatesTHBAndIdentity(t *testing.T) {
 	variantID := int64(2)
 	duplicateVariantID := int64(2)
