@@ -72,6 +72,8 @@ const (
 	ProjectErrorValidation ProjectAPIErrorCode = "VALIDATION_ERROR"
 	// ProjectErrorNotFound reports a project that does not exist.
 	ProjectErrorNotFound ProjectAPIErrorCode = "PROJECT_NOT_FOUND"
+	// ProjectErrorConflict reports a state or reference that prevents a change.
+	ProjectErrorConflict ProjectAPIErrorCode = "PROJECT_CONFLICT"
 	// ProjectErrorInternal reports an unexpected server failure.
 	ProjectErrorInternal ProjectAPIErrorCode = "INTERNAL_ERROR"
 )
@@ -99,4 +101,32 @@ type ProjectInput struct {
 	Description *string `json:"description"`
 	StartDate   *Date   `json:"start_date"`
 	EndDate     *Date   `json:"end_date"`
+}
+
+type ProjectProductAssignmentInput struct {
+	ProductID    int64  `json:"product_id"`
+	VariantID    *int64 `json:"variant_id"`
+	ProjectPrice string `json:"project_price"`
+}
+
+// ReplaceProjectProductsRequest uses a pointer so a missing items property is
+// distinguishable from an explicit empty array, which clears the selection.
+type ReplaceProjectProductsRequest struct {
+	Items *[]ProjectProductAssignmentInput `json:"items"`
+}
+
+type ProjectProductAssignment struct {
+	ProductID     int64   `json:"product_id"`
+	VariantID     *int64  `json:"variant_id"`
+	ProductName   string  `json:"product_name"`
+	Category      *string `json:"category"`
+	ImageURL      *string `json:"image_url"`
+	Size          *string `json:"size"`
+	Color         *string `json:"color"`
+	StockQuantity int32   `json:"stock_quantity"`
+	ProjectPrice  string  `json:"project_price"`
+}
+
+type ProjectProductsResponse struct {
+	Items []ProjectProductAssignment `json:"items"`
 }

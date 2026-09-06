@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -19,7 +20,8 @@ var (
 	// ErrProjectNameTooLong reports a name filter longer than a project name.
 	ErrProjectNameTooLong = errors.New("project name filter is too long")
 	// ErrInvalidProjectID reports a project ID outside the valid range.
-	ErrInvalidProjectID = errors.New("project ID must be positive")
+	ErrInvalidProjectID       = errors.New("project ID must be positive")
+	ErrInvalidProjectProducts = errors.New("invalid project product selection")
 )
 
 type ProjectStore interface {
@@ -28,6 +30,35 @@ type ProjectStore interface {
 	Create(context.Context, models.Date, models.ProjectInput) (models.Project, error)
 	Update(context.Context, models.Date, int64, models.ProjectInput) (models.Project, error)
 	Delete(context.Context, int64) error
+	ReplaceProducts(context.Context, models.Date, int64, []models.ProjectProductAssignmentInput) ([]models.ProjectProductAssignment, error)
+}
+
+// numeric(10,2) permits up to eight integral digits. Keeping this bound in
+// the service turns an invalid client amount into a 400 rather than a DB 500.
+var thbAmount = regexp.MustCompile(`^(0|[1-9][0-9]{0,7})\.[0-9]{2}$`)
+
+// ReplaceProducts validates the complete desired selection before the
+// repository atomically applies it.
+func (service *ProjectService) ReplaceProducts(ctx context.Context, projectID int64, items []models.ProjectProductAssignmentInput) (models.ProjectProductsResponse, error) {
+	if projectID <= 0 {
+		return models.ProjectProductsResponse{}, ErrInvalidProjectID
+	}
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if item.ProductID <= 0 || (item.VariantID != nil && *item.VariantID <= 0) || !thbAmount.MatchString(item.ProjectPrice) {
+			return models.ProjectProductsResponse{}, ErrInvalidProjectProducts
+		}
+		key := fmt.Sprintf("%d/%v", item.ProductID, item.VariantID)
+		if _, exists := seen[key]; exists {
+			return models.ProjectProductsResponse{}, ErrInvalidProjectProducts
+		}
+		seen[key] = struct{}{}
+	}
+	itemsOut, err := service.store.ReplaceProducts(ctx, service.today(), projectID, items)
+	if err != nil {
+		return models.ProjectProductsResponse{}, fmt.Errorf("replace project products: %w", err)
+	}
+	return models.ProjectProductsResponse{Items: itemsOut}, nil
 }
 
 // ProjectValidationError reports a rejected create or update payload. It

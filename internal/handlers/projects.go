@@ -20,6 +20,7 @@ type ProjectService interface {
 	Create(context.Context, models.ProjectInput) (models.Project, error)
 	Update(context.Context, int64, models.ProjectInput) (models.Project, error)
 	Delete(context.Context, int64) error
+	ReplaceProducts(context.Context, int64, []models.ProjectProductAssignmentInput) (models.ProjectProductsResponse, error)
 }
 
 type ProjectHandler struct {
@@ -37,6 +38,31 @@ func (handler *ProjectHandler) Register(router chi.Router) {
 	router.Post("/projects", handler.create)
 	router.Put("/projects/{project_id}", handler.update)
 	router.Delete("/projects/{project_id}", handler.delete)
+	router.Put("/projects/{project_id}/products", handler.replaceProducts)
+}
+
+func (handler *ProjectHandler) replaceProducts(writer http.ResponseWriter, request *http.Request) {
+	projectID, ok := projectPathID(writer, request)
+	if !ok {
+		return
+	}
+	var input models.ReplaceProjectProductsRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, projectBodyLimit))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid JSON request body")
+		return
+	}
+	if input.Items == nil {
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "items is required")
+		return
+	}
+	output, err := handler.projects.ReplaceProducts(request.Context(), projectID, *input.Items)
+	if err != nil {
+		writeProjectErrorResponse(writer, request, err, "Unable to replace project products")
+		return
+	}
+	writeSuccess(writer, http.StatusOK, output)
 }
 
 func (handler *ProjectHandler) list(writer http.ResponseWriter, request *http.Request) {
@@ -152,6 +178,13 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 	case errors.Is(err, repositories.ErrProjectHasOrders):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorHasOrders,
 			"Project has orders and cannot be deleted")
+	case errors.Is(err, repositories.ErrProjectCompleted):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict, "Project product selection cannot be changed")
+	case errors.Is(err, repositories.ErrProjectProductPromotion):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict,
+			"Project product selection is used by a promotion")
+	case errors.Is(err, usecases.ErrInvalidProjectProducts), errors.Is(err, repositories.ErrProjectProductInvalid):
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid project product selection")
 	default:
 		writeProjectError(writer, request, http.StatusInternalServerError, models.ProjectErrorInternal, fallbackMessage)
 	}
