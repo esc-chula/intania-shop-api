@@ -441,6 +441,7 @@ paths:
       operationId: listProjectPromotions
       tags: [Project Promotions]
       summary: List project pricing promotions
+      description: Requires an authenticated bearer token. Admins may access this route as well.
       security: [{ bearerAuth: [] }]
       responses:
         "200": { $ref: "#/components/responses/ProjectPromotionList" }
@@ -454,7 +455,7 @@ paths:
       tags: [Project Promotions]
       summary: Create a project pricing promotion
       description: Admin only. The promotion price cannot exceed the current original bundle price. Completed projects reject changes.
-      security: [{ bearerAuth: [] }]
+      security: [{ bearerAuth: [ADMIN] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectPromotionMutation" }
       responses:
         "201": { $ref: "#/components/responses/ProjectPromotion" }
@@ -472,6 +473,7 @@ paths:
       operationId: getProjectPromotion
       tags: [Project Promotions]
       summary: Get a project pricing promotion
+      description: Requires an authenticated bearer token. Admins may access this route as well.
       security: [{ bearerAuth: [] }]
       responses:
         "200": { $ref: "#/components/responses/ProjectPromotion" }
@@ -484,7 +486,8 @@ paths:
       operationId: updateProjectPromotion
       tags: [Project Promotions]
       summary: Update a project pricing promotion
-      security: [{ bearerAuth: [] }]
+      description: Admin only. The complete promotion item set is replaced. Completed projects reject changes.
+      security: [{ bearerAuth: [ADMIN] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectPromotionMutation" }
       responses:
         "200": { $ref: "#/components/responses/ProjectPromotion" }
@@ -498,7 +501,8 @@ paths:
       operationId: deleteProjectPromotion
       tags: [Project Promotions]
       summary: Delete a project pricing promotion
-      security: [{ bearerAuth: [] }]
+      description: Admin only. Completed projects reject changes.
+      security: [{ bearerAuth: [ADMIN] }]
       responses:
         "204": { description: Promotion deleted }
         "400": { $ref: "#/components/responses/ProjectAPIError" }
