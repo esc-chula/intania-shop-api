@@ -36,7 +36,10 @@ func TestCleanBaselineUpAndDown(t *testing.T) {
 	assertNames(t, database, `
 		SELECT tablename FROM pg_tables
 		WHERE schemaname='public' AND tablename <> 'goose_db_version'
-		ORDER BY tablename`, []string{"orders", "products", "project_products", "projects", "stock_transactions", "users", "variants"})
+		ORDER BY tablename`, []string{
+		"orders", "products", "project_products", "projects", "promotion_items", "promotions",
+		"stock_transactions", "users", "variants",
+	})
 	assertNames(t, database, `
 		SELECT t.typname FROM pg_type t
 		JOIN pg_namespace n ON n.oid=t.typnamespace
