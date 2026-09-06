@@ -21,16 +21,18 @@ type Pinger interface {
 }
 
 type Dependencies struct {
-	Logger              *slog.Logger
-	Database            Pinger
-	CORSAllowedOrigins  []string
-	AuthHandler         *handlers.AuthHandler
-	ProductHandler      *handlers.ProductHandler
-	ProductAdminHandler *handlers.ProductAdminHandler
-	InventoryHandler    *handlers.InventoryHandler
-	ProjectHandler      *handlers.ProjectHandler
-	UploadHandler       *handlers.UploadHandler
-	TokenVerifier       middlewares.TokenVerifier
+	Logger                *slog.Logger
+	Database              Pinger
+	CORSAllowedOrigins    []string
+	AuthHandler           *handlers.AuthHandler
+	ProductHandler        *handlers.ProductHandler
+	ProductAdminHandler   *handlers.ProductAdminHandler
+	InventoryHandler      *handlers.InventoryHandler
+	ProjectHandler        *handlers.ProjectHandler
+	PromotionHandler      *handlers.PromotionHandler
+	PromotionAdminHandler *handlers.PromotionAdminHandler
+	UploadHandler         *handlers.UploadHandler
+	TokenVerifier         middlewares.TokenVerifier
 }
 
 func NewLogger(level string) *slog.Logger {
@@ -64,6 +66,7 @@ func NewHandler(dependencies Dependencies) http.Handler {
 	if dependencies.TokenVerifier != nil {
 		authenticated := router.With(middlewares.Authenticate(dependencies.TokenVerifier))
 		admin := authenticated.With(middlewares.RequireRole(models.RoleAdmin))
+
 		if dependencies.ProductHandler != nil {
 			dependencies.ProductHandler.Register(admin)
 		}
@@ -75,6 +78,12 @@ func NewHandler(dependencies Dependencies) http.Handler {
 		}
 		if dependencies.ProjectHandler != nil {
 			dependencies.ProjectHandler.Register(admin)
+		}
+		if dependencies.PromotionHandler != nil {
+			dependencies.PromotionHandler.Register(authenticated)
+		}
+		if dependencies.PromotionAdminHandler != nil {
+			dependencies.PromotionAdminHandler.Register(admin)
 		}
 		if dependencies.UploadHandler != nil {
 			dependencies.UploadHandler.Register(admin)
