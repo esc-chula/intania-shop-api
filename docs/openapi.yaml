@@ -6,9 +6,10 @@ info:
     Admin-only catalogue, inventory, and upload backend for the ESC Chula Intania Shop.
     Identity comes from Google OAuth and a JWT. Business operations require the ADMIN role.
 
-    Project read and product-assignment operations are implemented. The remaining Project/POS operations are
-    contract-first and marked as planned; they are visible for frontend development but
-    are not implemented by the current server.
+    Project read and product-assignment operations are implemented. Project Promotions currently provide
+    project-scoped CRUD; cart pricing and applied-promotion behavior, along with the remaining
+    Project/POS operations, are contract-first and marked as planned. They are visible for
+    frontend development but are not implemented by the current server.
 servers:
   - url: /
     description: Same host as this documentation
@@ -20,7 +21,7 @@ tags:
   - { name: Uploads }
   - { name: Projects, description: "Admin-only event project administration" }
   - { name: Project Products, description: "Admin-only project catalogue selection and pricing" }
-  - { name: Project Promotions, description: "PLANNED — project-scoped pricing promotions; not implemented" }
+  - { name: Project Promotions, description: "PARTIALLY IMPLEMENTED — project-scoped Promotion CRUD is available; cart pricing and applied promotions are planned" }
   - { name: POS, description: "PLANNED — event POS catalogue, quotation, and checkout; not implemented" }
   - { name: Project Orders, description: "PLANNED — project POS history and reporting; not implemented" }
 paths:
@@ -1105,7 +1106,7 @@ components:
         subtotal: { $ref: "#/components/schemas/THBAmount" }
         applied_promotion:
           oneOf: [{ $ref: "#/components/schemas/AppliedProjectPromotion" }, { type: "null" }]
-          description: At most one promotion, applied at most once. Highest discount wins; ties use oldest created_at then lowest ID.
+          description: At most one promotion, applied at most once. Highest discount wins; ties use the lowest promotion_id.
         discount: { $ref: "#/components/schemas/THBAmount" }
         net_total: { $ref: "#/components/schemas/THBAmount" }
         quoted_at: { type: string, format: date-time }
