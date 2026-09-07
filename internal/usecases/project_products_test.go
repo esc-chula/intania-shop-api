@@ -37,6 +37,7 @@ func (stub *projectProductStoreStub) ReplaceProducts(_ context.Context, _ models
 
 func TestReplaceProductsValidatesTHBAndIdentity(t *testing.T) {
 	variantID := int64(2)
+	duplicateVariantID := int64(2)
 	tests := []struct {
 		name  string
 		items []models.ProjectProductAssignmentInput
@@ -48,6 +49,7 @@ func TestReplaceProductsValidatesTHBAndIdentity(t *testing.T) {
 		{name: "wrong precision", items: []models.ProjectProductAssignmentInput{{ProductID: 1, ProjectPrice: "1.0"}}, want: ErrInvalidProjectProducts},
 		{name: "numeric overflow", items: []models.ProjectProductAssignmentInput{{ProductID: 1, ProjectPrice: "100000000.00"}}, want: ErrInvalidProjectProducts},
 		{name: "duplicate variantless identity", items: []models.ProjectProductAssignmentInput{{ProductID: 1, ProjectPrice: "1.00"}, {ProductID: 1, ProjectPrice: "2.00"}}, want: ErrInvalidProjectProducts},
+		{name: "duplicate variant identity", items: []models.ProjectProductAssignmentInput{{ProductID: 1, VariantID: &variantID, ProjectPrice: "1.00"}, {ProductID: 1, VariantID: &duplicateVariantID, ProjectPrice: "2.00"}}, want: ErrInvalidProjectProducts},
 	}
 
 	for _, test := range tests {

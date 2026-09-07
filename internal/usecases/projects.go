@@ -48,7 +48,7 @@ func (service *ProjectService) ReplaceProducts(ctx context.Context, projectID in
 		if item.ProductID <= 0 || (item.VariantID != nil && *item.VariantID <= 0) || !thbAmount.MatchString(item.ProjectPrice) {
 			return models.ProjectProductsResponse{}, ErrInvalidProjectProducts
 		}
-		key := fmt.Sprintf("%d/%v", item.ProductID, item.VariantID)
+		key := projectProductIdentityKey(item.ProductID, item.VariantID)
 		if _, exists := seen[key]; exists {
 			return models.ProjectProductsResponse{}, ErrInvalidProjectProducts
 		}
@@ -59,6 +59,13 @@ func (service *ProjectService) ReplaceProducts(ctx context.Context, projectID in
 		return models.ProjectProductsResponse{}, fmt.Errorf("replace project products: %w", err)
 	}
 	return models.ProjectProductsResponse{Items: itemsOut}, nil
+}
+
+func projectProductIdentityKey(productID int64, variantID *int64) string {
+	if variantID == nil {
+		return fmt.Sprintf("%d/", productID)
+	}
+	return fmt.Sprintf("%d/%d", productID, *variantID)
 }
 
 // ProjectValidationError reports a rejected create or update payload. It
