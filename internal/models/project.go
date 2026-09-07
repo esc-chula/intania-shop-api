@@ -115,6 +115,55 @@ type ReplaceProjectProductsRequest struct {
 	Items *[]ProjectProductAssignmentInput `json:"items"`
 }
 
+// ProductNameFilterMaxLength and ProductCategoryFilterMaxLength match the
+// products columns the candidate filters compare against.
+const ProductNameFilterMaxLength = 150
+const ProductCategoryFilterMaxLength = 100
+
+// ProjectProductFilter narrows the product candidate list. Both filters are
+// optional and combine.
+type ProjectProductFilter struct {
+	Name     string
+	Category string
+}
+
+// ProjectSellableItem is one purchasable product or product variant offered to
+// the project picker, with the stock read live from the catalogue and the
+// selection state read from the project's assignments. ProjectPrice is null
+// exactly when the item is not selected.
+type ProjectSellableItem struct {
+	ProductID     int64   `json:"product_id"`
+	VariantID     *int64  `json:"variant_id"`
+	Size          *string `json:"size"`
+	Color         *string `json:"color"`
+	StockQuantity int32   `json:"stock_quantity"`
+	DefaultPrice  string  `json:"default_price"`
+	Selected      bool    `json:"selected"`
+	ProjectPrice  *string `json:"project_price"`
+}
+
+// ProjectProductCandidate is a product grouped with its sellable items. A
+// product without variants carries exactly one item, whose VariantID is null.
+type ProjectProductCandidate struct {
+	ProductID     int64                 `json:"product_id"`
+	Name          string                `json:"name"`
+	Category      *string               `json:"category"`
+	ImageURL      *string               `json:"image_url"`
+	SellableItems []ProjectSellableItem `json:"sellable_items"`
+}
+
+// ProjectProductCandidateListResponse is the paginated candidate response.
+// Pagination counts products rather than sellable items.
+type ProjectProductCandidateListResponse struct {
+	Products   []ProjectProductCandidate `json:"products"`
+	Total      int64                     `json:"total"`
+	Page       int32                     `json:"page"`
+	PageSize   int32                     `json:"page_size"`
+	TotalPages int32                     `json:"total_pages"`
+}
+
+// ProjectProductAssignment is one sellable item that is in the project, priced
+// at the project price.
 type ProjectProductAssignment struct {
 	ProductID     int64   `json:"product_id"`
 	VariantID     *int64  `json:"variant_id"`

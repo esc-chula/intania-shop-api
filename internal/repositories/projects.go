@@ -276,3 +276,133 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 	}
 	return out, nil
 }
+
+const projectProductFilterClause = `WHERE ($1::text = '' OR p.name ILIKE '%' || $1 || '%' ESCAPE '\\')
+  AND ($2::text = '' OR lower(p.category) = lower($2))`
+
+// listProductCandidatesQuery pages over products in the CTE, before any
+// variant is joined, so that a page holds a fixed number of products however
+// many sellable items they carry, and the window count totals products too.
+//
+// LEFT JOIN variants is what gives a product with no variant rows its single
+// sellable item with a null variant_id, and the IS NOT DISTINCT FROM join is
+// what lets that null item still find its assignment row.
+
+func sellableStockExpression(variantColumn, productRelation string) string {
+	return `COALESCE(CASE WHEN ` + variantColumn + ` IS NULL THEN ` + productRelation +
+		`.stock_quantity ELSE v.stock_quantity END, 0)`
+}
+
+var listProductCandidatesQuery = `WITH page AS (
+    SELECT p.id, p.name, p.category, p.images[1] AS image_url, p.price, p.stock_quantity,
+           COUNT(*) OVER () AS total
+    FROM products p
+    ` + projectProductFilterClause + `
+    ORDER BY p.id DESC
+    OFFSET $4 LIMIT $5
+)
+SELECT page.id, page.name, page.category, page.image_url, page.total,
+       v.variant_id, v.size, v.color,
+       ` + sellableStockExpression("v.variant_id", "page") + `,
+       COALESCE(v.price, page.price)::text,
+       pp.project_id IS NOT NULL,
+       pp.project_price::text
+FROM page
+LEFT JOIN variants v ON v.product_id = page.id
+LEFT JOIN project_products pp ON pp.project_id = $3
+       AND pp.product_id = page.id
+       AND pp.variant_id IS NOT DISTINCT FROM v.variant_id
+ORDER BY page.id DESC, v.variant_id NULLS FIRST`
+
+const countProductCandidatesQuery = `SELECT COUNT(*) FROM products p ` + projectProductFilterClause
+
+// listProjectProductsQuery reads the assigned sellable items. The variant join
+// is on the assignment's own variant_id, so a variantless assignment reads its
+// size, colour and stock from the product.
+var listProjectProductsQuery = `SELECT pp.product_id, pp.variant_id, p.name, p.category, p.images[1],
+       v.size, v.color,
+       ` + sellableStockExpression("pp.variant_id", "p") + `,
+       pp.project_price::text
+FROM project_products pp
+JOIN products p ON p.id = pp.product_id
+LEFT JOIN variants v ON v.variant_id = pp.variant_id
+WHERE pp.project_id = $1
+ORDER BY pp.product_id, pp.variant_id NULLS FIRST`
+
+func (repository *ProjectRepository) ListProductCandidates(ctx context.Context, projectID int64, filter models.ProjectProductFilter, offset, limit int32) ([]models.ProjectProductCandidate, int64, error) {
+	if err := repository.requireProject(ctx, projectID); err != nil {
+		return nil, 0, err
+	}
+	name := escapeLikePattern(filter.Name)
+
+	rows, err := repository.pool.Query(ctx, listProductCandidatesQuery, name, filter.Category, projectID, offset, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list product candidates: %w", err)
+	}
+	defer rows.Close()
+
+	candidates := make([]models.ProjectProductCandidate, 0)
+	var total int64
+	for rows.Next() {
+		var candidate models.ProjectProductCandidate
+		var item models.ProjectSellableItem
+		if err := rows.Scan(&candidate.ProductID, &candidate.Name, &candidate.Category, &candidate.ImageURL, &total,
+			&item.VariantID, &item.Size, &item.Color, &item.StockQuantity, &item.DefaultPrice,
+			&item.Selected, &item.ProjectPrice); err != nil {
+			return nil, 0, fmt.Errorf("scan product candidate: %w", err)
+		}
+		item.ProductID = candidate.ProductID
+		if len(candidates) == 0 || candidates[len(candidates)-1].ProductID != candidate.ProductID {
+			candidate.SellableItems = make([]models.ProjectSellableItem, 0, 1)
+			candidates = append(candidates, candidate)
+		}
+		last := &candidates[len(candidates)-1]
+		last.SellableItems = append(last.SellableItems, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("iterate product candidates: %w", err)
+	}
+	if len(candidates) == 0 {
+		if err := repository.pool.QueryRow(ctx, countProductCandidatesQuery, name, filter.Category).Scan(&total); err != nil {
+			return nil, 0, fmt.Errorf("count product candidates: %w", err)
+		}
+	}
+	return candidates, total, nil
+}
+
+func (repository *ProjectRepository) ListProjectProducts(ctx context.Context, projectID int64) ([]models.ProjectProductAssignment, error) {
+	if err := repository.requireProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	rows, err := repository.pool.Query(ctx, listProjectProductsQuery, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list project products: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]models.ProjectProductAssignment, 0)
+	for rows.Next() {
+		var item models.ProjectProductAssignment
+		if err := rows.Scan(&item.ProductID, &item.VariantID, &item.ProductName, &item.Category, &item.ImageURL,
+			&item.Size, &item.Color, &item.StockQuantity, &item.ProjectPrice); err != nil {
+			return nil, fmt.Errorf("scan project product: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate project products: %w", err)
+	}
+	return items, nil
+}
+
+func (repository *ProjectRepository) requireProject(ctx context.Context, projectID int64) error {
+	var exists int
+	err := repository.pool.QueryRow(ctx, `SELECT 1 FROM projects WHERE project_id = $1`, projectID).Scan(&exists)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrProjectNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("check project: %w", err)
+	}
+	return nil
+}
