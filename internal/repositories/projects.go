@@ -280,7 +280,20 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 const projectProductFilterClause = `WHERE ($1::text = '' OR p.name ILIKE '%' || $1 || '%' ESCAPE '\\')
   AND ($2::text = '' OR lower(p.category) = lower($2))`
 
-const listProductCandidatesQuery = `WITH page AS (
+// listProductCandidatesQuery pages over products in the CTE, before any
+// variant is joined, so that a page holds a fixed number of products however
+// many sellable items they carry, and the window count totals products too.
+//
+// LEFT JOIN variants is what gives a product with no variant rows its single
+// sellable item with a null variant_id, and the IS NOT DISTINCT FROM join is
+// what lets that null item still find its assignment row.
+
+func sellableStockExpression(variantColumn, productRelation string) string {
+	return `COALESCE(CASE WHEN ` + variantColumn + ` IS NULL THEN ` + productRelation +
+		`.stock_quantity ELSE v.stock_quantity END, 0)`
+}
+
+var listProductCandidatesQuery = `WITH page AS (
     SELECT p.id, p.name, p.category, p.images[1] AS image_url, p.price, p.stock_quantity,
            COUNT(*) OVER () AS total
     FROM products p
@@ -290,7 +303,7 @@ const listProductCandidatesQuery = `WITH page AS (
 )
 SELECT page.id, page.name, page.category, page.image_url, page.total,
        v.variant_id, v.size, v.color,
-       COALESCE(CASE WHEN v.variant_id IS NULL THEN page.stock_quantity ELSE v.stock_quantity END, 0),
+       ` + sellableStockExpression("v.variant_id", "page") + `,
        COALESCE(v.price, page.price)::text,
        pp.project_id IS NOT NULL,
        pp.project_price::text
@@ -303,9 +316,12 @@ ORDER BY page.id DESC, v.variant_id NULLS FIRST`
 
 const countProductCandidatesQuery = `SELECT COUNT(*) FROM products p ` + projectProductFilterClause
 
-const listProjectProductsQuery = `SELECT pp.product_id, pp.variant_id, p.name, p.category, p.images[1],
+// listProjectProductsQuery reads the assigned sellable items. The variant join
+// is on the assignment's own variant_id, so a variantless assignment reads its
+// size, colour and stock from the product.
+var listProjectProductsQuery = `SELECT pp.product_id, pp.variant_id, p.name, p.category, p.images[1],
        v.size, v.color,
-       COALESCE(CASE WHEN pp.variant_id IS NULL THEN p.stock_quantity ELSE v.stock_quantity END, 0),
+       ` + sellableStockExpression("pp.variant_id", "p") + `,
        pp.project_price::text
 FROM project_products pp
 JOIN products p ON p.id = pp.product_id
