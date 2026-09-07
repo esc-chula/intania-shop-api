@@ -15,10 +15,9 @@ import (
 
 // ErrProjectNotFound reports a project ID with no matching row.
 var (
-	ErrProjectNotFound         = errors.New("project not found")
-	ErrProjectCompleted        = errors.New("project is completed")
-	ErrProjectProductInvalid   = errors.New("invalid project product assignment")
-	ErrProjectProductPromotion = errors.New("project product assignment is used by a promotion")
+	ErrProjectNotFound       = errors.New("project not found")
+	ErrProjectCompleted      = errors.New("project is completed")
+	ErrProjectProductInvalid = errors.New("invalid project product assignment")
 )
 
 // ProjectRepository reads and writes projects and their derived status and order count.
@@ -246,22 +245,8 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 			return nil, ErrProjectProductInvalid
 		}
 	}
-	affectedPromotionItems, err := changedProjectProductIDs(ctx, tx, projectID, items)
-	if err != nil {
-		return nil, err
-	}
-	if len(affectedPromotionItems) > 0 {
-		var promotionUsesSelection bool
-		err = tx.QueryRow(ctx, `SELECT EXISTS(
-            SELECT 1 FROM project_promotion_items ppi
-	            WHERE ppi.project_product_id = ANY($1::bigint[]))`, affectedPromotionItems).Scan(&promotionUsesSelection)
-		if err != nil {
-			return nil, fmt.Errorf("check project product promotion references: %w", err)
-		}
-		if promotionUsesSelection {
-			return nil, ErrProjectProductPromotion
-		}
-	}
+	// TODO(BE-006): after project promotions exist, reject this replacement
+	// with a conflict when it removes or reprices an item used by a promotion.
 	if _, err = tx.Exec(ctx, `DELETE FROM project_products WHERE project_id=$1`, projectID); err != nil {
 		return nil, fmt.Errorf("clear project products: %w", err)
 	}
@@ -290,43 +275,6 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 		return nil, fmt.Errorf("commit project product replacement: %w", err)
 	}
 	return out, nil
-}
-
-func changedProjectProductIDs(ctx context.Context, tx pgx.Tx, projectID int64, items []models.ProjectProductAssignmentInput) ([]int64, error) {
-	rows, err := tx.Query(ctx, `SELECT project_product_id, product_id, variant_id, project_price::text FROM project_products WHERE project_id=$1`, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("read current project products: %w", err)
-	}
-	defer rows.Close()
-	type currentItem struct {
-		id    int64
-		price string
-	}
-	current := make(map[string]currentItem)
-	for rows.Next() {
-		var projectProductID int64
-		var productID int64
-		var variantID *int64
-		var price string
-		if err := rows.Scan(&projectProductID, &productID, &variantID, &price); err != nil {
-			return nil, fmt.Errorf("scan current project product: %w", err)
-		}
-		current[projectProductKey(productID, variantID)] = currentItem{id: projectProductID, price: price}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate current project products: %w", err)
-	}
-	desired := make(map[string]string, len(items))
-	for _, item := range items {
-		desired[projectProductKey(item.ProductID, item.VariantID)] = item.ProjectPrice
-	}
-	affected := make([]int64, 0)
-	for key, item := range current {
-		if desired[key] != item.price {
-			affected = append(affected, item.id)
-		}
-	}
-	return affected, nil
 }
 
 func projectProductKey(productID int64, variantID *int64) string {
