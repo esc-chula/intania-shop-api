@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -219,13 +218,6 @@ func (service *ProjectService) ListProductCandidates(ctx context.Context, projec
 	}
 
 	page, pageSize = normalizePage(page, pageSize)
-	// Cap the page so that (page-1)*pageSize stays inside int32: an overflowed
-	// offset wraps either to a negative value Postgres rejects or to a positive
-	// one that silently returns the wrong page. Comparing page-1 against the
-	// limit avoids the limit+1 that would itself overflow at pageSize 1.
-	if maxPage := int32(math.MaxInt32) / pageSize; page-1 > maxPage {
-		page = maxPage + 1
-	}
 	products, total, err := service.store.ListProductCandidates(ctx, projectID, filter, (page-1)*pageSize, pageSize)
 	if err != nil {
 		return models.ProjectProductCandidateListResponse{}, fmt.Errorf("list product candidates: %w", err)

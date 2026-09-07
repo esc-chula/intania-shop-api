@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
@@ -73,6 +74,9 @@ func normalizePage(page, pageSize int32) (int32, int32) {
 	}
 	if pageSize > 100 {
 		pageSize = 100
+	}
+	if maxPage := int32(math.MaxInt32) / pageSize; page-1 > maxPage {
+		page = maxPage + 1
 	}
 	return page, pageSize
 }
