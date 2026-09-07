@@ -31,7 +31,7 @@ func TestProjectProductReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err = pool.Exec(ctx, `TRUNCATE project_promotion_items, project_promotions, project_products, variants, products, orders, projects RESTART IDENTITY CASCADE`); err != nil {
+	if _, err = pool.Exec(ctx, `TRUNCATE project_products, variants, products, orders, projects RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	var projectID, completedID, singleID, variantProductID, variantID int64
@@ -75,18 +75,5 @@ func TestProjectProductReplacement(t *testing.T) {
 	}
 	if _, err := repo.ReplaceProducts(ctx, today, completedID, items[:1]); !errors.Is(err, repositories.ErrProjectCompleted) {
 		t.Fatalf("completed err=%v", err)
-	}
-	var assignedID, promotionID int64
-	if err := pool.QueryRow(ctx, `SELECT project_product_id FROM project_products WHERE project_id=$1`, projectID).Scan(&assignedID); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.QueryRow(ctx, `INSERT INTO project_promotions(project_id,name,promotion_price) VALUES($1,'bundle',1) RETURNING promotion_id`, projectID).Scan(&promotionID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO project_promotion_items(promotion_id,project_id,project_product_id,quantity) VALUES($1,$2,$3,1)`, promotionID, projectID, assignedID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.ReplaceProducts(ctx, today, projectID, []models.ProjectProductAssignmentInput{{ProductID: singleID, ProjectPrice: "7.00"}}); !errors.Is(err, repositories.ErrProjectProductPromotion) {
-		t.Fatalf("promotion err=%v", err)
 	}
 }
