@@ -1,0 +1,17 @@
+@baseUrl = http://localhost:8080
+@token = replace-with-admin-jwt
+@projectId = 1
+
+### Replace with one variantless product
+PUT {{baseUrl}}/projects/{{projectId}}/products
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"items":[{"product_id":1,"variant_id":null,"project_price":"299.00"}]}
+
+### Clear selection explicitly
+PUT {{baseUrl}}/projects/{{projectId}}/products
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"items":[]}

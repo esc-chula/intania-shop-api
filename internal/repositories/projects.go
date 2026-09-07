@@ -14,7 +14,11 @@ import (
 )
 
 // ErrProjectNotFound reports a project ID with no matching row.
-var ErrProjectNotFound = errors.New("project not found")
+var (
+	ErrProjectNotFound       = errors.New("project not found")
+	ErrProjectCompleted      = errors.New("project is completed")
+	ErrProjectProductInvalid = errors.New("invalid project product assignment")
+)
 
 // ProjectRepository reads and writes projects and their derived status and order count.
 type ProjectRepository struct{ pool *pgxpool.Pool }
@@ -209,4 +213,66 @@ func (repository *ProjectRepository) Delete(ctx context.Context, projectID int64
 		return ErrProjectNotFound
 	}
 	return nil
+}
+
+func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today models.Date, projectID int64, items []models.ProjectProductAssignmentInput) ([]models.ProjectProductAssignment, error) {
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin project product replacement: %w", err)
+	}
+	defer rollback(ctx, tx)
+	var endDate time.Time
+	if err = tx.QueryRow(ctx, `SELECT end_date FROM projects WHERE project_id=$1 FOR UPDATE`, projectID).Scan(&endDate); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrProjectNotFound
+		}
+		return nil, fmt.Errorf("lock project: %w", err)
+	}
+	if today.After(endDate) {
+		return nil, ErrProjectCompleted
+	}
+	for _, item := range items {
+		var valid bool
+		if item.VariantID == nil {
+			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM products p WHERE p.id=$1 AND NOT EXISTS (SELECT 1 FROM variants v WHERE v.product_id=p.id))`, item.ProductID).Scan(&valid)
+		} else {
+			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM variants WHERE variant_id=$1 AND product_id=$2)`, *item.VariantID, item.ProductID).Scan(&valid)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("validate project product: %w", err)
+		}
+		if !valid {
+			return nil, ErrProjectProductInvalid
+		}
+	}
+	// TODO(BE-006): after project promotions exist, reject this replacement
+	// with a conflict when it removes or reprices an item used by a promotion.
+	if _, err = tx.Exec(ctx, `DELETE FROM project_products WHERE project_id=$1`, projectID); err != nil {
+		return nil, fmt.Errorf("clear project products: %w", err)
+	}
+	for _, item := range items {
+		if _, err = tx.Exec(ctx, `INSERT INTO project_products(project_id, product_id, variant_id, project_price) VALUES ($1,$2,$3,$4::numeric)`, projectID, item.ProductID, item.VariantID, item.ProjectPrice); err != nil {
+			return nil, fmt.Errorf("insert project product: %w", err)
+		}
+	}
+	rows, err := tx.Query(ctx, `SELECT pp.product_id, pp.variant_id, p.name, p.category, p.images[1], v.size, v.color, COALESCE(v.stock_quantity, p.stock_quantity, 0), pp.project_price::text FROM project_products pp JOIN products p ON p.id=pp.product_id LEFT JOIN variants v ON v.variant_id=pp.variant_id WHERE pp.project_id=$1 ORDER BY pp.product_id, pp.variant_id NULLS FIRST`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list project products: %w", err)
+	}
+	defer rows.Close()
+	out := make([]models.ProjectProductAssignment, 0)
+	for rows.Next() {
+		var item models.ProjectProductAssignment
+		if err := rows.Scan(&item.ProductID, &item.VariantID, &item.ProductName, &item.Category, &item.ImageURL, &item.Size, &item.Color, &item.StockQuantity, &item.ProjectPrice); err != nil {
+			return nil, fmt.Errorf("scan project product: %w", err)
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate project products: %w", err)
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit project product replacement: %w", err)
+	}
+	return out, nil
 }

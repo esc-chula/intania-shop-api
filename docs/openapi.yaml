@@ -6,7 +6,7 @@ info:
     Admin-only catalogue, inventory, and upload backend for the ESC Chula Intania Shop.
     Identity comes from Google OAuth and a JWT. Business operations require the ADMIN role.
 
-    Project read operations are implemented. The remaining Project/POS operations are
+    Project read and product-assignment operations are implemented. The remaining Project/POS operations are
     contract-first and marked as planned; they are visible for frontend development but
     are not implemented by the current server.
 servers:
@@ -19,7 +19,7 @@ tags:
   - { name: Inventory }
   - { name: Uploads }
   - { name: Projects, description: "Admin-only event project administration" }
-  - { name: Project Products, description: "PLANNED — project catalogue selection and pricing; not implemented" }
+  - { name: Project Products, description: "Admin-only project catalogue selection and pricing" }
   - { name: Project Promotions, description: "PLANNED — project-scoped pricing promotions; not implemented" }
   - { name: POS, description: "PLANNED — event POS catalogue, quotation, and checkout; not implemented" }
   - { name: Project Orders, description: "PLANNED — project POS history and reporting; not implemented" }
