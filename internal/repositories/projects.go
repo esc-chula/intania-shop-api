@@ -276,10 +276,3 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 	}
 	return out, nil
 }
-
-func projectProductKey(productID int64, variantID *int64) string {
-	if variantID == nil {
-		return fmt.Sprintf("%d/", productID)
-	}
-	return fmt.Sprintf("%d/%d", productID, *variantID)
-}
