@@ -18,8 +18,6 @@ var (
 	ErrPromotionNotFound = errors.New("promotion not found")
 	// ErrProductNotSellable reports an item that is not assigned to the project.
 	ErrProductNotSellable = errors.New("product is not sellable in project")
-	// ErrProjectCompleted reports a mutation attempted after the project ended.
-	ErrProjectCompleted = errors.New("project is completed")
 	// ErrPromotionPriceExceedsBundle reports a mutation whose fixed price is
 	// greater than the current project-product bundle price.
 	ErrPromotionPriceExceedsBundle = errors.New("promotion price exceeds bundle price")
