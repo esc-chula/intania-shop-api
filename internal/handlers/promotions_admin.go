@@ -21,7 +21,7 @@ type PromotionAdminHandler struct {
 	promotions PromotionAdminService
 }
 
-// NewPromotionHandler constructs a Promotion HTTP adapter.
+// NewPromotionAdminHandler constructs an admin-only Promotion HTTP adapter.
 func NewPromotionAdminHandler(promotions PromotionAdminService) *PromotionAdminHandler {
 	return &PromotionAdminHandler{promotions: promotions}
 }

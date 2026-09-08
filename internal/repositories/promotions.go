@@ -160,11 +160,17 @@ func validatePromotionPrice(input models.ProjectPromotionMutation, assignments [
 	for index, assignment := range assignments {
 		lineTotal, err := assignment.ProjectPrice.Mul(int64(input.Items[index].Quantity))
 		if err != nil {
+			if errors.Is(err, models.ErrTHBAmountOverflow) {
+				return fmt.Errorf("%w: calculate item %d: %v", models.ErrTHBAmountOverflow, index, err)
+			}
 			return fmt.Errorf("%w: calculate item %d: %v", ErrPromotionPricingCorrupt, index, err)
 		}
 
 		bundlePrice, err = bundlePrice.Add(lineTotal)
 		if err != nil {
+			if errors.Is(err, models.ErrTHBAmountOverflow) {
+				return fmt.Errorf("%w: calculate bundle price: %v", models.ErrTHBAmountOverflow, err)
+			}
 			return fmt.Errorf("%w: calculate bundle price: %v", ErrPromotionPricingCorrupt, err)
 		}
 	}

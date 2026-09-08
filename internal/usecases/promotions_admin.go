@@ -8,6 +8,8 @@ import (
 	"github.com/esc-chula/intania-shop-api/internal/models"
 )
 
+// PromotionCreator is the persistence surface for validated promotion
+// mutations.
 type PromotionCreator interface {
 	Create(context.Context, models.Date, int64, models.ProjectPromotionMutation) (models.ProjectPromotion, error)
 	Update(context.Context, models.Date, int64, int64, models.ProjectPromotionMutation) (models.ProjectPromotion, error)

@@ -127,6 +127,8 @@ func writePromotionErrorResponse(writer http.ResponseWriter, request *http.Reque
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorCompleted, "Project is completed")
 	case errors.Is(err, repositories.ErrPromotionPriceExceedsBundle):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Promotion price cannot exceed the current bundle price")
+	case errors.Is(err, models.ErrTHBAmountOverflow):
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Promotion bundle price exceeds the supported range")
 	default:
 		writeProjectError(writer, request, http.StatusInternalServerError, models.ProjectErrorInternal, fallbackMessage)
 	}

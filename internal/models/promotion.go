@@ -4,6 +4,8 @@ import (
 	"time"
 )
 
+// PromotionNameMaxLength is the maximum number of Unicode characters in a
+// trimmed promotion name.
 const PromotionNameMaxLength = 150
 
 // ProjectPromotionItemInput is the public item reference accepted when a

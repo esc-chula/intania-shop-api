@@ -108,6 +108,7 @@ func TestPromotionHandlerMapsDomainErrors(t *testing.T) {
 		{name: "product not sellable", err: repositories.ErrProductNotSellable, wantStatus: http.StatusConflict, wantCode: models.ProjectErrorProductNotSellable},
 		{name: "completed project", err: repositories.ErrProjectCompleted, wantStatus: http.StatusConflict, wantCode: models.ProjectErrorCompleted},
 		{name: "price exceeds bundle", err: repositories.ErrPromotionPriceExceedsBundle, wantStatus: http.StatusBadRequest, wantCode: models.ProjectErrorValidation},
+		{name: "arithmetic overflow", err: models.ErrTHBAmountOverflow, wantStatus: http.StatusBadRequest, wantCode: models.ProjectErrorValidation},
 		{name: "validation", err: usecases.PromotionValidationError{Message: "invalid promotion"}, wantStatus: http.StatusBadRequest, wantCode: models.ProjectErrorValidation},
 		{name: "unexpected storage error", err: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: models.ProjectErrorInternal},
 	}
