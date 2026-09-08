@@ -94,6 +94,23 @@ func TestPromotionAdminHandlerRejectsMalformedMutationBodies(t *testing.T) {
 	}
 }
 
+func TestPromotionAdminHandlerRejectsOversizedMutationBody(t *testing.T) {
+	t.Parallel()
+
+	body := `{"name":"` + strings.Repeat("x", promotionBodyLimit) + `","promotion_price":"10.00","items":[{"product_id":1,"quantity":1}]}`
+	service := &promotionHTTPAdminStub{}
+	router := chi.NewRouter()
+	NewPromotionAdminHandler(service).Register(router)
+
+	response := servePromotionRequest(router, http.MethodPost, "/projects/3/promotions", body)
+	if response.Code != http.StatusBadRequest || service.createCalls != 0 {
+		t.Fatalf("status/calls = %d/%d, body = %s", response.Code, service.createCalls, response.Body.String())
+	}
+	if errorResponse := decodePromotionAPIError(t, response); errorResponse.Code != models.ProjectErrorValidation {
+		t.Fatalf("error code = %s", errorResponse.Code)
+	}
+}
+
 func TestPromotionHandlerMapsDomainErrors(t *testing.T) {
 	t.Parallel()
 

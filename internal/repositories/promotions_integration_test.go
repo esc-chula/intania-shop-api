@@ -248,8 +248,8 @@ func TestPromotionRepositoryEnforcesPromotionItemRestrictAndCascade(t *testing.T
 		t.Fatal("deleting a referenced project product succeeded")
 	} else {
 		var databaseError *pgconn.PgError
-		if !errors.As(err, &databaseError) || databaseError.Code != "23503" {
-			t.Fatalf("delete referenced project product error = %v, want foreign-key violation", err)
+		if !errors.As(err, &databaseError) || (databaseError.Code != "23503" && databaseError.Code != "23001") {
+			t.Fatalf("delete referenced project product error = %v, want foreign-key/restrict violation", err)
 		}
 	}
 
@@ -310,6 +310,159 @@ func TestPromotionRepositoryMapsMissingProjectsPromotionsAndExcessivePrice(t *te
 	}
 	if len(list) != 1 || list[0].PromotionID != created.PromotionID {
 		t.Fatalf("promotion list after rejected create = %+v, want only promotion %d", list, created.PromotionID)
+	}
+}
+
+func TestProjectProductReplacementPreservesPromotionReferences(t *testing.T) {
+	database := openPromotionIntegrationDatabase(t)
+	fixture := newPromotionIntegrationFixture(t, database)
+	promotionRepository := NewPromotionRepository(database)
+	projectRepository := NewProjectRepository(database)
+
+	created, err := promotionRepository.Create(context.Background(), fixture.Today, fixture.ProjectID, models.ProjectPromotionMutation{
+		Name:           "Referenced assignment bundle",
+		PromotionPrice: mustPromotionAmount(t, "150.00"),
+		Items:          []models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID, Quantity: 2}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := promotionRepository.ResolveProjectProducts(context.Background(), fixture.ProjectID,
+		[]models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != 1 || before[0].ProjectProductID != fixture.AssignmentAID {
+		t.Fatalf("referenced assignment before replacement = %+v", before)
+	}
+
+	variantOne := fixture.VariantOneID
+	variantTwo := fixture.VariantTwoID
+	if _, err := projectRepository.ReplaceProducts(context.Background(), fixture.Today, fixture.ProjectID, []models.ProjectProductAssignmentInput{
+		{ProductID: fixture.ProductAID, ProjectPrice: "125.00"},
+		{ProductID: fixture.ProductBID, VariantID: &variantOne, ProjectPrice: "40.00"},
+		{ProductID: fixture.ProductBID, VariantID: &variantTwo, ProjectPrice: "40.00"},
+	}); err != nil {
+		t.Fatalf("replacement retaining referenced assignment: %v", err)
+	}
+
+	after, err := promotionRepository.ResolveProjectProducts(context.Background(), fixture.ProjectID,
+		[]models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 1 || after[0].ProjectProductID != before[0].ProjectProductID {
+		t.Fatalf("referenced assignment identity changed: before=%+v after=%+v", before, after)
+	}
+	if after[0].ProjectPrice.String() != "125.00" {
+		t.Fatalf("repriced assignment = %s, want 125.00", after[0].ProjectPrice.String())
+	}
+
+	hydrated, err := promotionRepository.Detail(context.Background(), fixture.ProjectID, created.PromotionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionAmounts(t, hydrated, "250.00", "150.00", "100.00")
+	if hydrated.Items[0].UnitPrice.String() != "125.00" {
+		t.Fatalf("hydrated repriced unit = %s, want 125.00", hydrated.Items[0].UnitPrice.String())
+	}
+
+	_, err = projectRepository.ReplaceProducts(context.Background(), fixture.Today, fixture.ProjectID, []models.ProjectProductAssignmentInput{
+		{ProductID: fixture.ProductBID, VariantID: &variantOne, ProjectPrice: "40.00"},
+		{ProductID: fixture.ProductBID, VariantID: &variantTwo, ProjectPrice: "40.00"},
+	})
+	if !errors.Is(err, ErrProjectProductPromotion) {
+		t.Fatalf("removing referenced assignment error = %v, want ErrProjectProductPromotion", err)
+	}
+
+	unchanged, err := promotionRepository.Detail(context.Background(), fixture.ProjectID, created.PromotionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionAmounts(t, unchanged, "250.00", "150.00", "100.00")
+	if _, err := promotionRepository.ResolveProjectProducts(context.Background(), fixture.ProjectID,
+		[]models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID}}); err != nil {
+		t.Fatalf("referenced assignment disappeared after rejected replacement: %v", err)
+	}
+}
+
+func TestProjectDeleteCascadesPromotionsAndItems(t *testing.T) {
+	database := openPromotionIntegrationDatabase(t)
+	fixture := newPromotionIntegrationFixture(t, database)
+	promotionRepository := NewPromotionRepository(database)
+	projectRepository := NewProjectRepository(database)
+
+	created, err := promotionRepository.Create(context.Background(), fixture.Today, fixture.ProjectID, models.ProjectPromotionMutation{
+		Name:           "Project deletion bundle",
+		PromotionPrice: mustPromotionAmount(t, "50.00"),
+		Items:          []models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID, Quantity: 1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := projectRepository.Delete(context.Background(), fixture.ProjectID); err != nil {
+		t.Fatalf("delete project with promotion and no orders: %v", err)
+	}
+
+	for name, query := range map[string]string{
+		"project":     `SELECT count(*) FROM projects WHERE project_id = $1`,
+		"promotion":   `SELECT count(*) FROM promotions WHERE promotion_id = $1`,
+		"item":        `SELECT count(*) FROM promotion_items WHERE promotion_id = $1`,
+		"assignments": `SELECT count(*) FROM project_products WHERE project_id = $1`,
+	} {
+		var count int
+		argument := fixture.ProjectID
+		if name == "promotion" || name == "item" {
+			argument = created.PromotionID
+		}
+		if err := database.QueryRow(context.Background(), query, argument).Scan(&count); err != nil {
+			t.Fatalf("count %s: %v", name, err)
+		}
+		if count != 0 {
+			t.Fatalf("%s count after project deletion = %d, want 0", name, count)
+		}
+	}
+}
+
+func TestProjectDeleteWithOrdersRollsBackPromotionCleanup(t *testing.T) {
+	database := openPromotionIntegrationDatabase(t)
+	fixture := newPromotionIntegrationFixture(t, database)
+	promotionRepository := NewPromotionRepository(database)
+	projectRepository := NewProjectRepository(database)
+
+	created, err := promotionRepository.Create(context.Background(), fixture.Today, fixture.ProjectID, models.ProjectPromotionMutation{
+		Name:           "Protected project bundle",
+		PromotionPrice: mustPromotionAmount(t, "50.00"),
+		Items:          []models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID, Quantity: 1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(context.Background(), `INSERT INTO orders (project_id) VALUES ($1)`, fixture.ProjectID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := projectRepository.Delete(context.Background(), fixture.ProjectID); !errors.Is(err, ErrProjectHasOrders) {
+		t.Fatalf("delete project with orders error = %v, want ErrProjectHasOrders", err)
+	}
+
+	for name, query := range map[string]string{
+		"project":   `SELECT count(*) FROM projects WHERE project_id = $1`,
+		"promotion": `SELECT count(*) FROM promotions WHERE promotion_id = $1`,
+		"item":      `SELECT count(*) FROM promotion_items WHERE promotion_id = $1`,
+	} {
+		var count int
+		argument := fixture.ProjectID
+		if name == "promotion" || name == "item" {
+			argument = created.PromotionID
+		}
+		if err := database.QueryRow(context.Background(), query, argument).Scan(&count); err != nil {
+			t.Fatalf("count %s: %v", name, err)
+		}
+		if count != 1 {
+			t.Fatalf("%s count after rejected deletion = %d, want 1", name, count)
+		}
 	}
 }
 
@@ -403,6 +556,9 @@ func cleanupPromotionIntegrationFixture(t *testing.T, database *pgxpool.Pool, fi
 	t.Helper()
 	ctx := context.Background()
 	for _, projectID := range []int64{fixture.ProjectID, fixture.OtherProjectID} {
+		if _, err := database.Exec(ctx, `DELETE FROM orders WHERE project_id = $1`, projectID); err != nil {
+			t.Errorf("cleanup orders for project %d: %v", projectID, err)
+		}
 		if _, err := database.Exec(ctx, `DELETE FROM promotions WHERE project_id = $1`, projectID); err != nil {
 			t.Errorf("cleanup promotions for project %d: %v", projectID, err)
 		}

@@ -377,7 +377,7 @@ paths:
       operationId: deleteProject
       tags: [Projects]
       summary: Delete a project with no orders
-      description: Admin only. Configuration is deleted with the project. A project with any order returns `PROJECT_HAS_ORDERS`.
+      description: Admin only. Configuration, project promotions, and their items are deleted with a project that has no orders. A project with any order returns `PROJECT_HAS_ORDERS`.
       security: [{ bearerAuth: [] }]
       responses:
         "204": { description: Project deleted }
@@ -425,7 +425,7 @@ paths:
       operationId: replaceProjectProducts
       tags: [Project Products]
       summary: Atomically replace project product assignments
-      description: Admin only. The supplied list is the complete desired selection. Any validation failure rejects the entire replacement. Completed projects reject changes.
+      description: Admin only. The supplied list is the complete desired selection, and any validation failure rejects the entire replacement. Omitted project-product assignments are removed only when no Promotion references them; a referenced assignment returns `409 PROJECT_CONFLICT`. Retained assignments keep their identity and a changed project price is updated in place, so Promotion bundle totals recalculate from the new price. Completed projects reject changes.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ReplaceProjectProducts" }
       responses:
@@ -866,6 +866,7 @@ components:
         - PROJECT_NOT_FOUND
         - PROJECT_NOT_ACTIVE
         - PROJECT_COMPLETED
+        - PROJECT_CONFLICT
         - PROJECT_HAS_ORDERS
         - PRODUCT_NOT_SELLABLE
         - PROMOTION_NOT_FOUND

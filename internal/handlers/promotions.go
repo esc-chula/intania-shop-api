@@ -83,8 +83,11 @@ func promotionPathID(writer http.ResponseWriter, request *http.Request) (int64, 
 	return promotionID, true
 }
 
+// promotionBodyLimit caps JSON mutation payloads before decoding.
+const promotionBodyLimit = 1 << 20
+
 func decodePromotionMutation(writer http.ResponseWriter, request *http.Request) (models.ProjectPromotionMutationRequest, bool) {
-	decoder := json.NewDecoder(request.Body)
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, promotionBodyLimit))
 	decoder.DisallowUnknownFields()
 
 	var input models.ProjectPromotionMutationRequest

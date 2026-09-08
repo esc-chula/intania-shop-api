@@ -18,6 +18,9 @@ var (
 	ErrProjectNotFound       = errors.New("project not found")
 	ErrProjectCompleted      = errors.New("project is completed")
 	ErrProjectProductInvalid = errors.New("invalid project product assignment")
+	// ErrProjectProductPromotion reports an assignment omitted while it is
+	// still referenced by a project promotion.
+	ErrProjectProductPromotion = errors.New("project product assignment is used by a promotion")
 )
 
 // ProjectRepository reads and writes projects and their derived status and order count.
@@ -156,9 +159,21 @@ func scanProject(row rowScanner, extra ...any) (models.Project, error) {
 // still reference it.
 var ErrProjectHasOrders = errors.New("project has orders")
 
-// foreignKeyViolation is the SQLSTATE Postgres raises when ON DELETE RESTRICT
-// stops a delete.
-const foreignKeyViolation = "23503"
+// foreignKeyViolation and restrictViolation are the SQLSTATEs PostgreSQL uses
+// for delete constraints, depending on whether the foreign key is declared
+// with NO ACTION or RESTRICT.
+const (
+	foreignKeyViolation = "23503"
+	restrictViolation   = "23001"
+)
+
+func isDeleteConstraintViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == foreignKeyViolation || pgErr.Code == restrictViolation
+}
 
 const createProjectQuery = `INSERT INTO projects (name, description, start_date, end_date)
 VALUES ($1, $2, $3::date, $4::date)
@@ -197,20 +212,47 @@ func (repository *ProjectRepository) Update(ctx context.Context, today models.Da
 	return repository.Detail(ctx, today, projectID)
 }
 
-// Delete permanently removes a project. Orders reference projects with
-// ON DELETE RESTRICT, so the database is what enforces that a project with
-// sales is never deleted.
+// Delete permanently removes a project and its project-scoped promotions.
+// Orders reference projects with ON DELETE RESTRICT, so the database is what
+// enforces that a project with sales is never deleted. The dependent
+// promotions are removed first because promotion items intentionally restrict
+// project-product deletion.
 func (repository *ProjectRepository) Delete(ctx context.Context, projectID int64) error {
-	tag, err := repository.pool.Exec(ctx, `DELETE FROM projects WHERE project_id = $1`, projectID)
+	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == foreignKeyViolation {
+		return fmt.Errorf("begin project delete: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	var lockedProjectID int64
+	if err := tx.QueryRow(ctx, `
+		SELECT project_id
+		FROM projects
+		WHERE project_id = $1
+		FOR UPDATE`, projectID).Scan(&lockedProjectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrProjectNotFound
+		}
+		return fmt.Errorf("lock project for delete: %w", err)
+	}
+
+	// Promotion items are deleted by the promotion's ON DELETE CASCADE
+	// constraint. Removing promotions before the project allows the project's
+	// project-products to be removed by their own cascade without violating the
+	// promotion-item ON DELETE RESTRICT constraint.
+	if _, err := tx.Exec(ctx, `DELETE FROM promotions WHERE project_id = $1`, projectID); err != nil {
+		return fmt.Errorf("delete project promotions: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM projects WHERE project_id = $1`, projectID); err != nil {
+		if isDeleteConstraintViolation(err) {
 			return ErrProjectHasOrders
 		}
 		return fmt.Errorf("delete project: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrProjectNotFound
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit project delete: %w", err)
 	}
 	return nil
 }
@@ -245,12 +287,56 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 			return nil, ErrProjectProductInvalid
 		}
 	}
-	// TODO(BE-006): after project promotions exist, reject this replacement
-	// with a conflict when it removes or reprices an item used by a promotion.
-	if _, err = tx.Exec(ctx, `DELETE FROM project_products WHERE project_id=$1`, projectID); err != nil {
-		return nil, fmt.Errorf("clear project products: %w", err)
+	current, err := readCurrentProjectProducts(ctx, tx, projectID)
+	if err != nil {
+		return nil, err
 	}
+	desired := make(map[projectProductReference]models.ProjectProductAssignmentInput, len(items))
 	for _, item := range items {
+		key := newProjectProductReference(item.ProductID, item.VariantID)
+		if _, exists := desired[key]; exists {
+			// The use case rejects duplicates, but retain the invariant at the
+			// repository boundary for callers that use the repository directly.
+			return nil, ErrProjectProductInvalid
+		}
+		desired[key] = item
+	}
+
+	for key, item := range current {
+		if item.referenced {
+			if _, keep := desired[key]; !keep {
+				return nil, fmt.Errorf("%w: product %d cannot be removed while used by a promotion", ErrProjectProductPromotion, key.productID)
+			}
+		}
+	}
+
+	// Remove only assignments omitted from the desired set. Referenced rows
+	// have already been checked above, and retained rows keep their identity.
+	for key, item := range current {
+		if _, keep := desired[key]; keep {
+			continue
+		}
+		if _, err = tx.Exec(ctx, `
+			DELETE FROM project_products
+			WHERE project_product_id = $1 AND project_id = $2`, item.id, projectID); err != nil {
+			return nil, fmt.Errorf("delete project product: %w", err)
+		}
+	}
+
+	for _, item := range items {
+		key := newProjectProductReference(item.ProductID, item.VariantID)
+		if existing, ok := current[key]; ok {
+			if existing.projectPrice == item.ProjectPrice {
+				continue
+			}
+			if _, err = tx.Exec(ctx, `
+				UPDATE project_products
+				SET project_price = $3::numeric, updated_at = CURRENT_TIMESTAMP
+				WHERE project_product_id = $1 AND project_id = $2`, existing.id, projectID, item.ProjectPrice); err != nil {
+				return nil, fmt.Errorf("update project product: %w", err)
+			}
+			continue
+		}
 		if _, err = tx.Exec(ctx, `INSERT INTO project_products(project_id, product_id, variant_id, project_price) VALUES ($1,$2,$3,$4::numeric)`, projectID, item.ProductID, item.VariantID, item.ProjectPrice); err != nil {
 			return nil, fmt.Errorf("insert project product: %w", err)
 		}
@@ -275,6 +361,54 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 		return nil, fmt.Errorf("commit project product replacement: %w", err)
 	}
 	return out, nil
+}
+
+type currentProjectProduct struct {
+	id           int64
+	projectPrice string
+	referenced   bool
+}
+
+func readCurrentProjectProducts(ctx context.Context, tx pgx.Tx, projectID int64) (map[projectProductReference]currentProjectProduct, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT pp.project_product_id, pp.product_id, pp.variant_id, pp.project_price::text,
+		       EXISTS (
+			       SELECT 1
+			       FROM promotion_items pi
+			       WHERE pi.project_product_id = pp.project_product_id
+			         AND pi.project_id = pp.project_id
+		       )
+		FROM project_products pp
+		WHERE pp.project_id = $1
+		FOR UPDATE`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("read current project products: %w", err)
+	}
+	defer rows.Close()
+
+	current := make(map[projectProductReference]currentProjectProduct)
+	for rows.Next() {
+		var (
+			projectProductID int64
+			productID        int64
+			variantID        *int64
+			projectPrice     string
+			referenced       bool
+		)
+		if err := rows.Scan(&projectProductID, &productID, &variantID, &projectPrice, &referenced); err != nil {
+			return nil, fmt.Errorf("scan current project product: %w", err)
+		}
+
+		key := newProjectProductReference(productID, variantID)
+		if _, exists := current[key]; exists {
+			return nil, fmt.Errorf("%w: duplicate project-product identity for product %d", ErrProjectProductInvalid, productID)
+		}
+		current[key] = currentProjectProduct{id: projectProductID, projectPrice: projectPrice, referenced: referenced}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate current project products: %w", err)
+	}
+	return current, nil
 }
 
 const projectProductFilterClause = `WHERE ($1::text = '' OR p.name ILIKE '%' || $1 || '%' ESCAPE '\\')
