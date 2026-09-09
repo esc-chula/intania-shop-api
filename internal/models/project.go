@@ -80,6 +80,10 @@ const (
 	ProjectErrorProductNotSellable ProjectAPIErrorCode = "PRODUCT_NOT_SELLABLE"
 	// ProjectErrorPromotionNotFound reports a promotion that does not exist in the project.
 	ProjectErrorPromotionNotFound ProjectAPIErrorCode = "PROMOTION_NOT_FOUND"
+	// ProjectErrorNotActive reports a quotation attempted outside an ACTIVE project.
+	ProjectErrorNotActive ProjectAPIErrorCode = "PROJECT_NOT_ACTIVE"
+	// ProjectErrorInsufficientStock reports a Cart quantity above live stock.
+	ProjectErrorInsufficientStock ProjectAPIErrorCode = "INSUFFICIENT_STOCK"
 	// ProjectErrorInternal reports an unexpected server failure.
 	ProjectErrorInternal ProjectAPIErrorCode = "INTERNAL_ERROR"
 )
