@@ -180,14 +180,11 @@ func validatePromotionPrice(input models.ProjectPromotionMutation, assignments [
 	return nil
 }
 
-func resolveProjectProducts(ctx context.Context, queryer promotionQueryer, projectID int64, references []models.ProjectPromotionItemInput, lockRows bool) ([]ProjectProductAssignment, error) {
-	assignments := make([]ProjectProductAssignment, len(references))
-	if len(references) == 0 {
-		return assignments, nil
-	}
-
+// buildRequestedTable returns a parameterized VALUES relation and its arguments.
+func buildRequestedTable(projectID int64, references []models.ProjectPromotionItemInput) (requestedTable string, arguments []any) {
 	values := make([]string, 0, len(references))
-	arguments := []any{projectID}
+	arguments = []any{projectID}
+
 	for _, reference := range references {
 		productParameter := len(arguments) + 1
 		variantParameter := len(arguments) + 2
@@ -195,11 +192,24 @@ func resolveProjectProducts(ctx context.Context, queryer promotionQueryer, proje
 		arguments = append(arguments, reference.ProductID, reference.VariantID)
 	}
 
+	requestedTable = `(VALUES ` + strings.Join(values, ", ") + `) AS requested(product_id, variant_id)`
+
+	return
+}
+
+func resolveProjectProducts(ctx context.Context, queryer promotionQueryer, projectID int64, references []models.ProjectPromotionItemInput, lockRows bool) ([]ProjectProductAssignment, error) {
+	assignments := make([]ProjectProductAssignment, len(references))
+	if len(references) == 0 {
+		return assignments, nil
+	}
+
+	requestedTable, arguments := buildRequestedTable(projectID, references)
+
 	query := `
 		SELECT pp.project_product_id, pp.project_id, pp.product_id,
 		       pp.variant_id, pp.project_price::text
 		FROM project_products pp
-		JOIN (VALUES ` + strings.Join(values, ", ") + `) AS requested(product_id, variant_id)
+		JOIN ` + requestedTable + `
 		  ON pp.product_id = requested.product_id
 		 AND pp.variant_id IS NOT DISTINCT FROM requested.variant_id
 		WHERE pp.project_id = $1`
@@ -287,7 +297,7 @@ func insertPromotionItems(ctx context.Context, tx pgx.Tx, promotionID, projectID
 }
 
 func (repository *PromotionRepository) queryPromotions(ctx context.Context, queryer promotionQueryer, projectID int64, promotionID *int64) ([]models.ProjectPromotion, error) {
-	query, arguments := promotionHydrationQuery(projectID, promotionID)
+	query, arguments := buildPromotionHydrationQuery(projectID, promotionID)
 	rows, err := queryer.Query(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query promotions: %w", err)
@@ -304,7 +314,7 @@ func (repository *PromotionRepository) queryPromotions(ctx context.Context, quer
 	return promotions, nil
 }
 
-func promotionHydrationQuery(projectID int64, promotionID *int64) (string, []any) {
+func buildPromotionHydrationQuery(projectID int64, promotionID *int64) (query string, arguments []any) {
 	const baseQuery = `
 		SELECT p.promotion_id, p.project_id, p.name, p.promotion_price::text,
 		       p.created_at, p.updated_at,
@@ -321,15 +331,16 @@ func promotionHydrationQuery(projectID int64, promotionID *int64) (string, []any
 		  ON variant.variant_id = pp.variant_id AND variant.product_id = pp.product_id
 		WHERE p.project_id = $1`
 
-	query := baseQuery
-	arguments := []any{projectID}
+	query = baseQuery
+	arguments = []any{projectID}
+
 	if promotionID != nil {
 		query += ` AND p.promotion_id = $2`
 		arguments = append(arguments, *promotionID)
 	}
 	query += ` ORDER BY p.promotion_id ASC, pp.product_id ASC, pp.variant_id NULLS FIRST, pp.project_product_id ASC`
 
-	return query, arguments
+	return
 }
 
 type promotionHydrationRow struct {
@@ -415,19 +426,24 @@ func promotionItemFromHydrationRow(row promotionHydrationRow) (models.ProjectPro
 	if row.RequiredQuantity == nil || row.ProductID == nil || row.ProjectPrice == nil || row.ProductName == nil {
 		return models.ProjectPromotionItem{}, fmt.Errorf("%w: promotion %d contains an incomplete item", ErrPromotionPricingCorrupt, row.PromotionID)
 	}
+
 	if row.VariantID != nil && row.VariantRowID == nil {
 		return models.ProjectPromotionItem{}, fmt.Errorf("%w: project product %d references a missing or unrelated variant", ErrPromotionPricingCorrupt, *row.ProjectProductID)
 	}
+
 	projectPrice, err := models.ParseTHBAmount(*row.ProjectPrice)
 	if err != nil {
 		return models.ProjectPromotionItem{}, fmt.Errorf("%w: project product %d price: %v", ErrPromotionPricingCorrupt, *row.ProjectProductID, err)
 	}
+
 	if *row.RequiredQuantity <= 0 {
 		return models.ProjectPromotionItem{}, fmt.Errorf("%w: promotion %d has invalid quantity", ErrPromotionPricingCorrupt, row.PromotionID)
 	}
+
 	if row.VariantID == nil && row.VariantRowID != nil {
 		return models.ProjectPromotionItem{}, fmt.Errorf("%w: variantless project product %d joined a variant", ErrPromotionPricingCorrupt, *row.ProjectProductID)
 	}
+
 	return models.ProjectPromotionItem{
 		ProductID:   *row.ProductID,
 		VariantID:   row.VariantID,
@@ -445,13 +461,16 @@ func calculatePromotionTotals(promotions []models.ProjectPromotion) error {
 		if err != nil {
 			return err
 		}
+
 		discount, err := originalPrice.Sub(promotions[index].PromotionPrice)
 		if err != nil {
 			return fmt.Errorf("%w: promotion %d price exceeds current bundle price", ErrPromotionPricingCorrupt, promotions[index].PromotionID)
 		}
+
 		promotions[index].OriginalBundlePrice = originalPrice
 		promotions[index].Discount = discount
 	}
+
 	return nil
 }
 
@@ -466,10 +485,12 @@ func calculatePromotionBundlePrice(promotion models.ProjectPromotion) (models.TH
 		if err != nil {
 			return models.THBAmount{}, fmt.Errorf("%w: promotion %d item %d: %v", ErrPromotionPricingCorrupt, promotion.PromotionID, itemIndex, err)
 		}
+
 		originalPrice, err = originalPrice.Add(lineTotal)
 		if err != nil {
 			return models.THBAmount{}, fmt.Errorf("%w: promotion %d bundle price: %v", ErrPromotionPricingCorrupt, promotion.PromotionID, err)
 		}
 	}
+
 	return originalPrice, nil
 }

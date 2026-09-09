@@ -21,6 +21,9 @@ var (
 	// ErrProjectProductPromotion reports an assignment omitted while it is
 	// still referenced by a project promotion.
 	ErrProjectProductPromotion = errors.New("project product assignment is used by a promotion")
+	// ErrProjectProductPromotionPrice reports a price change that would make a
+	// referenced promotion more expensive than its recalculated bundle.
+	ErrProjectProductPromotionPrice = errors.New("project product price would invalidate a promotion")
 )
 
 // ProjectRepository reads and writes projects and their derived status and order count.
@@ -191,7 +194,8 @@ WHERE project_id = $1`
 // already been validated by the use case.
 func (repository *ProjectRepository) Create(ctx context.Context, today models.Date, input models.ProjectInput) (models.Project, error) {
 	var projectID int64
-	if err := repository.pool.QueryRow(ctx, createProjectQuery,
+	if err := repository.pool.QueryRow(
+		ctx, createProjectQuery,
 		*input.Name, input.Description, input.StartDate.Time, input.EndDate.Time,
 	).Scan(&projectID); err != nil {
 		return models.Project{}, fmt.Errorf("create project: %w", err)
@@ -310,6 +314,10 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 		}
 	}
 
+	if err := validatePromotionPricesForReplacement(ctx, tx, projectID, current, desired); err != nil {
+		return nil, err
+	}
+
 	// Remove only assignments omitted from the desired set. Referenced rows
 	// have already been checked above, and retained rows keep their identity.
 	for key, item := range current {
@@ -367,6 +375,220 @@ type currentProjectProduct struct {
 	id           int64
 	projectPrice string
 	referenced   bool
+}
+
+// validatePromotionPricesForReplacement checks every Promotion affected by a
+// requested Project Product price change before the replacement mutates any
+// rows. The Project row and all current Project Products are already locked by
+// the caller, which serializes this check with Promotion mutations.
+func validatePromotionPricesForReplacement(
+	ctx context.Context,
+	tx pgx.Tx,
+	projectID int64,
+	current map[projectProductReference]currentProjectProduct,
+	desired map[projectProductReference]models.ProjectProductAssignmentInput,
+) error {
+	changedPrices, err := changedPromotionProjectProductPrices(current, desired)
+	if err != nil {
+		return err
+	}
+	if len(changedPrices) == 0 {
+		return nil
+	}
+
+	changedProjectProductIDs := make([]int64, 0, len(changedPrices))
+	for projectProductID := range changedPrices {
+		changedProjectProductIDs = append(changedProjectProductIDs, projectProductID)
+	}
+
+	rows, err := tx.Query(
+		ctx, `
+		WITH affected_promotions AS (
+			SELECT DISTINCT pi.promotion_id
+			FROM promotion_items pi
+			WHERE pi.project_id = $1
+			  AND pi.project_product_id = ANY($2::bigint[])
+		)
+		SELECT
+			p.promotion_id,
+			p.promotion_price::text,
+			pi.project_product_id,
+			pi.required_quantity,
+			pp.project_price::text
+		FROM affected_promotions ap
+		JOIN promotions p
+		  ON p.project_id = $1
+		 AND p.promotion_id = ap.promotion_id
+		JOIN promotion_items pi
+		  ON pi.project_id = p.project_id
+		 AND pi.promotion_id = p.promotion_id
+		JOIN project_products pp
+		  ON pp.project_id = pi.project_id
+		 AND pp.project_product_id = pi.project_product_id
+		ORDER BY p.promotion_id, pi.project_product_id
+		FOR UPDATE OF p, pi, pp
+	`,
+		projectID,
+		changedProjectProductIDs,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"read affected promotion prices for project product replacement: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+
+	totals := make(map[int64]promotionReplacementTotal)
+	orderedPromotionIDs := make([]int64, 0)
+
+	for rows.Next() {
+		var (
+			promotionID       int64
+			promotionPriceRaw string
+			projectProductID  int64
+			requiredQuantity  int32
+			projectPriceRaw   string
+		)
+
+		if err := rows.Scan(
+			&promotionID,
+			&promotionPriceRaw,
+			&projectProductID,
+			&requiredQuantity,
+			&projectPriceRaw,
+		); err != nil {
+			return fmt.Errorf(
+				"scan promotion price for project product replacement: %w",
+				err,
+			)
+		}
+
+		if requiredQuantity <= 0 {
+			return fmt.Errorf(
+				"%w: promotion %d item %d has invalid quantity %d",
+				ErrPromotionPricingCorrupt,
+				promotionID,
+				projectProductID,
+				requiredQuantity,
+			)
+		}
+
+		promotionPrice, err := models.ParseTHBAmount(promotionPriceRaw)
+		if err != nil {
+			return fmt.Errorf(
+				"%w: promotion %d price: %w",
+				ErrPromotionPricingCorrupt,
+				promotionID,
+				err,
+			)
+		}
+
+		projectPrice, err := models.ParseTHBAmount(projectPriceRaw)
+		if err != nil {
+			return fmt.Errorf(
+				"%w: project product %d price: %w",
+				ErrPromotionPricingCorrupt,
+				projectProductID,
+				err,
+			)
+		}
+
+		if replacementPrice, changed := changedPrices[projectProductID]; changed {
+			projectPrice = replacementPrice
+		}
+
+		lineTotal, err := projectPrice.Mul(int64(requiredQuantity))
+		if err != nil {
+			return fmt.Errorf(
+				"%w: promotion %d item %d total: %w",
+				ErrPromotionPricingCorrupt,
+				promotionID,
+				projectProductID,
+				err,
+			)
+		}
+
+		total, exists := totals[promotionID]
+		if !exists {
+			total.promotionPrice = promotionPrice
+			orderedPromotionIDs = append(orderedPromotionIDs, promotionID)
+		}
+
+		total.bundlePrice, err = total.bundlePrice.Add(lineTotal)
+		if err != nil {
+			return fmt.Errorf(
+				"%w: promotion %d bundle price: %w",
+				ErrPromotionPricingCorrupt,
+				promotionID,
+				err,
+			)
+		}
+
+		totals[promotionID] = total
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf(
+			"iterate promotion prices for project product replacement: %w",
+			err,
+		)
+	}
+
+	// The query is ordered by promotion_id, so checking in this order makes
+	// validation errors deterministic.
+	for _, promotionID := range orderedPromotionIDs {
+		total := totals[promotionID]
+
+		if total.promotionPrice.GreaterThan(total.bundlePrice) {
+			return fmt.Errorf(
+				"%w: promotion %d price exceeds recalculated bundle price",
+				ErrProjectProductPromotionPrice,
+				promotionID,
+			)
+		}
+	}
+
+	return nil
+}
+
+type promotionReplacementTotal struct {
+	promotionPrice models.THBAmount
+	bundlePrice    models.THBAmount
+}
+
+func changedPromotionProjectProductPrices(
+	current map[projectProductReference]currentProjectProduct,
+	desired map[projectProductReference]models.ProjectProductAssignmentInput,
+) (map[int64]models.THBAmount, error) {
+	changed := make(map[int64]models.THBAmount)
+	for key, existing := range current {
+		if !existing.referenced {
+			continue
+		}
+
+		replacement, keep := desired[key]
+		if !keep {
+			// Referenced omissions are rejected by ReplaceProducts before this
+			// helper runs.
+			continue
+		}
+
+		currentPrice, err := models.ParseTHBAmount(existing.projectPrice)
+		if err != nil {
+			return nil, fmt.Errorf("%w: project product %d price: %v", ErrPromotionPricingCorrupt, existing.id, err)
+		}
+
+		replacementPrice, err := models.ParseTHBAmount(replacement.ProjectPrice)
+		if err != nil {
+			return nil, fmt.Errorf("%w: project product %d price: %v", ErrProjectProductInvalid, existing.id, err)
+		}
+
+		if currentPrice.Satang() != replacementPrice.Satang() {
+			changed[existing.id] = replacementPrice
+		}
+	}
+	return changed, nil
 }
 
 func readCurrentProjectProducts(ctx context.Context, tx pgx.Tx, projectID int64) (map[projectProductReference]currentProjectProduct, error) {

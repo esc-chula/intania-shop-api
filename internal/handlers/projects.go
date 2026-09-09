@@ -216,6 +216,9 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 	case errors.Is(err, repositories.ErrProjectProductPromotion):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict,
 			"Project product selection is used by a promotion and cannot be removed")
+	case errors.Is(err, repositories.ErrProjectProductPromotionPrice):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict,
+			"Project product price change would invalidate a promotion")
 	case errors.Is(err, usecases.ErrInvalidProjectProducts), errors.Is(err, repositories.ErrProjectProductInvalid):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid project product selection")
 	default:

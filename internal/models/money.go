@@ -163,6 +163,16 @@ func (amount THBAmount) Multiply(quantity int64) (THBAmount, error) {
 	return amount.Mul(quantity)
 }
 
+// GreaterThan returns true if current value is greater than the comparator
+func (a THBAmount) GreaterThan(b THBAmount) bool {
+	return a.satang > b.satang
+}
+
+// Lesser returns true if current value is lesser than the comparator
+func (a THBAmount) LesserThan(b THBAmount) bool {
+	return a.satang < b.satang
+}
+
 // Value implements database/sql/driver.Valuer so database writes retain the
 // exact two-decimal representation.
 func (amount THBAmount) Value() (driver.Value, error) { return amount.String(), nil }

@@ -387,6 +387,51 @@ func TestProjectProductReplacementPreservesPromotionReferences(t *testing.T) {
 	}
 }
 
+func TestProjectProductReplacementRejectsInvalidatingPromotionReprice(t *testing.T) {
+	database := openPromotionIntegrationDatabase(t)
+	fixture := newPromotionIntegrationFixture(t, database)
+	promotionRepository := NewPromotionRepository(database)
+	projectRepository := NewProjectRepository(database)
+
+	created, err := promotionRepository.Create(context.Background(), fixture.Today, fixture.ProjectID, models.ProjectPromotionMutation{
+		Name:           "Protected price bundle",
+		PromotionPrice: mustPromotionAmount(t, "150.00"),
+		Items:          []models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID, Quantity: 2}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionAmounts(t, created, "200.00", "150.00", "50.00")
+
+	variantOne := fixture.VariantOneID
+	variantTwo := fixture.VariantTwoID
+	_, err = projectRepository.ReplaceProducts(context.Background(), fixture.Today, fixture.ProjectID, []models.ProjectProductAssignmentInput{
+		{ProductID: fixture.ProductAID, ProjectPrice: "70.00"},
+		{ProductID: fixture.ProductBID, VariantID: &variantOne, ProjectPrice: "40.00"},
+		{ProductID: fixture.ProductBID, VariantID: &variantTwo, ProjectPrice: "40.00"},
+	})
+	if !errors.Is(err, ErrProjectProductPromotionPrice) {
+		t.Fatalf("invalidating reprice error = %v, want ErrProjectProductPromotionPrice", err)
+	}
+
+	var projectPrice string
+	if err := database.QueryRow(context.Background(), `
+		SELECT project_price::text
+		FROM project_products
+		WHERE project_product_id = $1`, fixture.AssignmentAID).Scan(&projectPrice); err != nil {
+		t.Fatal(err)
+	}
+	if projectPrice != "100.00" {
+		t.Fatalf("project price after rejected reprice = %s, want 100.00", projectPrice)
+	}
+
+	unchanged, err := promotionRepository.Detail(context.Background(), fixture.ProjectID, created.PromotionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPromotionAmounts(t, unchanged, "200.00", "150.00", "50.00")
+}
+
 func TestProjectDeleteCascadesPromotionsAndItems(t *testing.T) {
 	database := openPromotionIntegrationDatabase(t)
 	fixture := newPromotionIntegrationFixture(t, database)
