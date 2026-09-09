@@ -11,6 +11,15 @@ type POSCartItemRequest struct {
 	Quantity  int32  `json:"quantity"`
 }
 
+// POSStockConflict describes a Cart line whose requested quantity exceeds the
+// live stock returned by the Project catalogue.
+type POSStockConflict struct {
+	ProductID         int64  `json:"product_id"`
+	VariantID         *int64 `json:"variant_id"`
+	RequestedQuantity int32  `json:"requested_quantity"`
+	AvailableQuantity int32  `json:"available_quantity"`
+}
+
 // POSCartRequest is the client-supplied Cart used to request a quotation.
 // Request-level validation (including the non-empty and unique-item rules) is
 // owned by the POS use case rather than this transport DTO.
