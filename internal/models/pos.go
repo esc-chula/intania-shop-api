@@ -73,6 +73,45 @@ type POSQuote struct {
 	QuotedAt         time.Time                `json:"quoted_at"`
 }
 
+// POSResolvedItem is the current, database-resolved representation of a
+// sellable Project Product. It is intentionally separate from the public
+// ProjectProductAssignment response because the repository keeps the project
+// price as exact fixed-point money until the transport mapping step.
+type POSResolvedItem struct {
+	ProductID     int64
+	VariantID     *int64
+	ProductName   string
+	Category      *string
+	ImageURL      *string
+	Size          *string
+	Color         *string
+	StockQuantity int32
+	ProjectPrice  THBAmount
+}
+
+// POSResolvedCartItem is one request-ordered Cart item resolved against the
+// current Project catalogue. Quantity comes from the request; all catalogue
+// fields come from the same database snapshot.
+type POSResolvedCartItem struct {
+	Item     POSResolvedItem
+	Quantity int32
+}
+
+// POSCatalogSnapshot contains the project and every selected sellable item
+// read from one consistent database snapshot.
+type POSCatalogSnapshot struct {
+	Project Project
+	Items   []POSResolvedItem
+}
+
+// POSQuoteSnapshot contains the project, request-ordered sellable items, and
+// all project Promotions read from one consistent database snapshot.
+type POSQuoteSnapshot struct {
+	Project    Project
+	Items      []POSResolvedCartItem
+	Promotions []PricingPromotion
+}
+
 // PricingCartLine is the resolved, money-safe input consumed by the reusable
 // Pricing service. It intentionally contains no JSON or client-supplied price
 // fields.

@@ -69,6 +69,7 @@ func (service *PricingService) Calculate(cart []models.PricingCartLine, promotio
 		Discount: models.THBAmount{},
 		NetTotal: subtotal,
 	}
+
 	if best == nil {
 		return result, nil
 	}
@@ -87,6 +88,7 @@ func (service *PricingService) Calculate(cart []models.PricingCartLine, promotio
 	}
 	result.Discount = best.discount
 	result.NetTotal = netTotal
+
 	return result, nil
 }
 
@@ -100,6 +102,7 @@ func newPricingItemKey(productID int64, variantID *int64) pricingItemKey {
 	if variantID == nil {
 		return pricingItemKey{productID: productID, variantIDIsNull: true}
 	}
+
 	return pricingItemKey{productID: productID, variantID: *variantID}
 }
 
@@ -109,6 +112,7 @@ func validatePricingCart(cart []models.PricingCartLine) (map[pricingItemKey]mode
 	}
 
 	byIdentity := make(map[pricingItemKey]models.PricingCartLine, len(cart))
+
 	for index, line := range cart {
 		if line.ProductID <= 0 || (line.VariantID != nil && *line.VariantID <= 0) || line.Quantity <= 0 {
 			return nil, fmt.Errorf("%w: Cart item %d has an invalid identity or quantity", ErrPricingInvalidCart, index+1)
@@ -126,6 +130,7 @@ func validatePricingCart(cart []models.PricingCartLine) (map[pricingItemKey]mode
 
 func validatePricingPromotions(promotions []models.PricingPromotion) error {
 	seenPromotionIDs := make(map[int64]struct{}, len(promotions))
+
 	for promotionIndex, promotion := range promotions {
 		if promotion.PromotionID <= 0 {
 			return fmt.Errorf("%w: Promotion %d has an invalid ID", ErrPricingInvalidPromotion, promotionIndex+1)
@@ -140,6 +145,7 @@ func validatePricingPromotions(promotions []models.PricingPromotion) error {
 		}
 
 		seenItems := make(map[pricingItemKey]struct{}, len(promotion.Items))
+
 		for itemIndex, item := range promotion.Items {
 			if item.ProductID <= 0 || (item.VariantID != nil && *item.VariantID <= 0) || item.Quantity <= 0 {
 				return fmt.Errorf("%w: Promotion %d item %d has an invalid identity or quantity", ErrPricingInvalidPromotion, promotion.PromotionID, itemIndex+1)
@@ -158,6 +164,7 @@ func validatePricingPromotions(promotions []models.PricingPromotion) error {
 
 func calculatePricingSubtotal(cart []models.PricingCartLine) (models.THBAmount, error) {
 	var subtotal models.THBAmount
+
 	for index, line := range cart {
 		lineTotal, err := line.UnitPrice.Mul(int64(line.Quantity))
 		if err != nil {
@@ -168,6 +175,7 @@ func calculatePricingSubtotal(cart []models.PricingCartLine) (models.THBAmount, 
 			return models.THBAmount{}, fmt.Errorf("calculate Cart subtotal: %w", err)
 		}
 	}
+
 	return subtotal, nil
 }
 
@@ -188,6 +196,7 @@ func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCa
 	}
 
 	var bundlePrice models.THBAmount
+
 	for itemIndex, item := range promotion.Items {
 		line := cartByIdentity[newPricingItemKey(item.ProductID, item.VariantID)]
 		lineTotal, err := line.UnitPrice.Mul(int64(item.Quantity))
