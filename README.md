@@ -11,10 +11,13 @@ The server currently implements the service, authentication, catalogue, inventor
 - 9 product and variant routes
 - 4 inventory routes
 - 2 upload routes
+- 8 Project and project-product routes
+- 5 Promotion routes
+- 2 POS catalogue and quotation routes
 
 All catalogue, inventory, and upload operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
 
-The interactive `/docs` page also shows the planned Project/POS operations. Their tags are explicitly labeled `PLANNED`; they are API contracts for frontend development and are not registered by the current server.
+The interactive `/docs` page shows the implemented Project, Promotion, and POS catalogue/quotation operations alongside planned checkout, order, and reporting operations. Only operations explicitly tagged `PLANNED` are API contracts that are not registered by the current server.
 
 ## Technology
 
