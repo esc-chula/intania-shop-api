@@ -71,6 +71,10 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	promotionHandler := handlers.NewPromotionHandler(promotionService)
 	promotionAdminHandler := handlers.NewPromotionAdminHandler(promotionAdminService)
 
+	posRepository := repositories.NewPOSRepository(pool)
+	posService := usecases.NewPOSService(posRepository)
+	posHandler := handlers.NewPOSHandler(posService)
+
 	uploadHandler := handlers.NewUploadHandler(uploader)
 
 	handler := server.NewHandler(server.Dependencies{
@@ -84,6 +88,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		ProjectHandler:        projectHandler,
 		PromotionHandler:      promotionHandler,
 		PromotionAdminHandler: promotionAdminHandler,
+		POSHandler:            posHandler,
 		UploadHandler:         uploadHandler,
 		TokenVerifier:         tokens,
 	})

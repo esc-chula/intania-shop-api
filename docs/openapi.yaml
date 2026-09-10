@@ -6,10 +6,10 @@ info:
     Admin-only catalogue, inventory, and upload backend for the ESC Chula Intania Shop.
     Identity comes from Google OAuth and a JWT. Business operations require the ADMIN role.
 
-    Project read and product-assignment operations are implemented. Project Promotions currently provide
-    project-scoped CRUD; cart pricing and applied-promotion behavior, along with the remaining
-    Project/POS operations, are contract-first and marked as planned. They are visible for
-    frontend development but are not implemented by the current server.
+    Project read, product-assignment, Promotion CRUD, and POS catalogue/quotation operations
+    are implemented. POS payment, order, and reporting operations remain contract-first and
+    are marked as planned. They are visible for frontend development but are not implemented
+    by the current server.
 servers:
   - url: /
     description: Same host as this documentation
@@ -21,8 +21,8 @@ tags:
   - { name: Uploads }
   - { name: Projects, description: "Admin-only event project administration" }
   - { name: Project Products, description: "Admin-only project catalogue selection and pricing" }
-  - { name: Project Promotions, description: "PARTIALLY IMPLEMENTED — project-scoped Promotion CRUD is available; cart pricing and applied promotions are planned" }
-  - { name: POS, description: "PLANNED — event POS catalogue, quotation, and checkout; not implemented" }
+  - { name: Project Promotions, description: "IMPLEMENTED — project-scoped Promotion CRUD and POS applied-promotion pricing are available" }
+  - { name: POS, description: "PARTIALLY IMPLEMENTED — event POS catalogue and quotation are available; checkout and orders remain planned" }
   - { name: Project Orders, description: "PLANNED — project POS history and reporting; not implemented" }
 paths:
   /:
@@ -425,7 +425,7 @@ paths:
       operationId: replaceProjectProducts
       tags: [Project Products]
       summary: Atomically replace project product assignments
-      description: Admin only. The supplied list is the complete desired selection, and any validation failure rejects the entire replacement. Omitted project-product assignments are removed only when no Promotion references them; a referenced assignment returns `409 PROJECT_CONFLICT`. Retained assignments keep their identity and a changed project price is updated in place, so Promotion bundle totals recalculate from the new price. Completed projects reject changes.
+      description: Admin only. The supplied list is the complete desired selection, and any validation failure rejects the entire replacement. Omitted project-product assignments are removed only when no Promotion references them; a referenced assignment returns `409 PROJECT_CONFLICT`. Retained assignments keep their identity. A changed project price is updated in place when every affected Promotion remains valid; a change that would make a Promotion price exceed its recalculated bundle is rejected atomically with `409 PROJECT_CONFLICT`. Otherwise Promotion bundle totals recalculate from the new price. Completed projects reject changes.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ReplaceProjectProducts" }
       responses:
@@ -535,7 +535,7 @@ paths:
       tags: [POS]
       summary: Get the project POS catalogue
       description: Admin only. Preview is available in any project status; `can_checkout` is true only while ACTIVE. Category groups are sorted case-insensitively by name in ascending order, with the null category last.
-      security: [{ bearerAuth: [] }]
+      security: [{ bearerAuth: [ADMIN] }]
       parameters: [{ $ref: "#/components/parameters/ProjectID" }]
       responses:
         "200": { $ref: "#/components/responses/POSCatalog" }
@@ -550,7 +550,7 @@ paths:
       tags: [POS]
       summary: Validate and price a POS cart
       description: Admin only. Available only while the project is ACTIVE. Client-supplied prices, discounts, and totals are never accepted.
-      security: [{ bearerAuth: [] }]
+      security: [{ bearerAuth: [ADMIN] }]
       parameters: [{ $ref: "#/components/parameters/ProjectID" }]
       requestBody: { $ref: "#/components/requestBodies/POSQuote" }
       responses:
@@ -1095,6 +1095,7 @@ components:
     POSCartRequest:
       type: object
       additionalProperties: false
+      description: Each (product_id, variant_id) identity may appear at most once. The server validates identity uniqueness and ignores no client-supplied monetary fields because they are not part of this schema.
       required: [items]
       properties:
         items:

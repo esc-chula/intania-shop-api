@@ -183,6 +183,7 @@ func queryPOSCartItems(ctx context.Context, queryer promotionQueryer, projectID 
 	}
 
 	requestedTable, arguments := buildPOSRequestedTable(projectID, cart)
+
 	query := `SELECT requested.ordinal, requested.quantity, ` + posResolvedItemColumns + `
 FROM ` + requestedTable + `
 JOIN project_products pp
@@ -190,6 +191,7 @@ JOIN project_products pp
  AND pp.product_id = requested.product_id
  AND pp.variant_id IS NOT DISTINCT FROM requested.variant_id` + posResolvedItemJoins + `
 ORDER BY requested.ordinal`
+
 	rows, err := queryer.Query(ctx, query, arguments...)
 	if err != nil {
 		return nil, fmt.Errorf("query POS Cart items: %w", err)

@@ -196,18 +196,34 @@ func decodeProjectInput(writer http.ResponseWriter, request *http.Request) (mode
 }
 
 func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request, err error, fallbackMessage string) {
-	var validation usecases.ProjectValidationError
+	var (
+		validation    usecases.ProjectValidationError
+		posValidation usecases.POSValidationError
+		stockError    usecases.POSInsufficientStockError
+	)
+
 	switch {
 	case errors.As(err, &validation):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, validation.Message)
+	case errors.As(err, &posValidation):
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, posValidation.Message)
+	case errors.As(err, &stockError):
+		writeProjectErrorWithDetails(writer, request, http.StatusConflict, models.ProjectErrorInsufficientStock,
+			"Requested quantity exceeds available stock", map[string]any{"items": stockError.Items})
 	case errors.Is(err, usecases.ErrInvalidProjectStatus):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid project status")
 	case errors.Is(err, usecases.ErrProjectNameTooLong):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Project name filter is too long")
 	case errors.Is(err, usecases.ErrInvalidProjectID):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid project ID")
+	case errors.Is(err, usecases.ErrInvalidPOSCart), errors.Is(err, repositories.ErrPOSDuplicateCartItem):
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid POS Cart")
 	case errors.Is(err, repositories.ErrProjectNotFound):
 		writeProjectError(writer, request, http.StatusNotFound, models.ProjectErrorNotFound, "Project not found")
+	case errors.Is(err, usecases.ErrProjectNotActive):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorNotActive, "Project is not active")
+	case errors.Is(err, repositories.ErrProductNotSellable):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorProductNotSellable, "Product is not sellable in project")
 	case errors.Is(err, repositories.ErrProjectHasOrders):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorHasOrders,
 			"Project has orders and cannot be deleted")
