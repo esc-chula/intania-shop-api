@@ -77,3 +77,57 @@ func TestProjectProductReplacement(t *testing.T) {
 		t.Fatalf("completed err=%v", err)
 	}
 }
+
+func TestListProductCandidatesFiltersByNameAndCategory(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	if err := migrations.Apply(ctx, dsn, slog.New(slog.NewTextHandler(io.Discard, nil))); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if _, err = pool.Exec(ctx, `TRUNCATE project_products, variants, products, orders, projects RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	var projectID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO projects(name,start_date,end_date) VALUES('active','2020-01-01','2099-01-01') RETURNING project_id`).Scan(&projectID); err != nil {
+		t.Fatal(err)
+	}
+	for _, product := range []struct {
+		name, category string
+	}{
+		{name: "Candidate Demo Shirt", category: "Apparel"},
+		{name: "Candidate Demo Mug", category: "Accessories"},
+		{name: "Literal_100% Product", category: "Apparel"},
+	} {
+		if _, err := pool.Exec(ctx, `INSERT INTO products(name,price,status,category) VALUES($1,10,'IN_STOCK',$2)`, product.name, product.category); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	repo := repositories.NewProjectRepository(pool)
+	check := func(filter models.ProjectProductFilter, expectedName string) {
+		t.Helper()
+		got, total, err := repo.ListProductCandidates(ctx, projectID, filter, 0, 10)
+		if err != nil {
+			t.Fatalf("list candidates filter=%+v err=%v", filter, err)
+		}
+		if total != 1 || len(got) != 1 {
+			t.Fatalf("list candidates filter=%+v total=%d len=%d", filter, total, len(got))
+		}
+		if got[0].Name != expectedName {
+			t.Fatalf("list candidates filter=%+v name=%q", filter, got[0].Name)
+		}
+	}
+
+	check(models.ProjectProductFilter{Name: "Shirt"}, "Candidate Demo Shirt")
+	check(models.ProjectProductFilter{Name: "Shirt", Category: "Apparel"}, "Candidate Demo Shirt")
+	check(models.ProjectProductFilter{Name: "Literal_100%"}, "Literal_100% Product")
+}

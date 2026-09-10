@@ -277,7 +277,7 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 	return out, nil
 }
 
-const projectProductFilterClause = `WHERE ($1::text = '' OR p.name ILIKE '%' || $1 || '%' ESCAPE '\\')
+const projectProductFilterClause = `WHERE ($1::text = '' OR p.name ILIKE '%' || $1 || '%' ESCAPE '\')
   AND ($2::text = '' OR lower(p.category) = lower($2))`
 
 // listProductCandidatesQuery pages over products in the CTE, before any
