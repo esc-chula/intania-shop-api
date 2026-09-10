@@ -1,10 +1,10 @@
 # Intania Shop API
 
-Admin-only backend for authentication, product catalogue management, inventory, and uploads. The previous customer storefront domains have been removed. Project/POS is designed contract-first in the OpenAPI document and will be implemented next.
+Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, and POS catalogue and quotation. The previous customer storefront domains have been removed. POS checkout, orders, and reporting remain planned.
 
 ## Current scope
 
-The server currently implements 22 method/path combinations:
+The server currently implements the service, authentication, catalogue, inventory, upload, Project, Promotion, and POS routes documented below:
 
 - 4 service and documentation routes
 - 3 Google OAuth routes
