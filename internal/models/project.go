@@ -74,6 +74,12 @@ const (
 	ProjectErrorNotFound ProjectAPIErrorCode = "PROJECT_NOT_FOUND"
 	// ProjectErrorConflict reports a state or reference that prevents a change.
 	ProjectErrorConflict ProjectAPIErrorCode = "PROJECT_CONFLICT"
+	// ProjectErrorCompleted reports a mutation attempted after the project ended.
+	ProjectErrorCompleted ProjectAPIErrorCode = "PROJECT_COMPLETED"
+	// ProjectErrorProductNotSellable reports an item not assigned to the project.
+	ProjectErrorProductNotSellable ProjectAPIErrorCode = "PRODUCT_NOT_SELLABLE"
+	// ProjectErrorPromotionNotFound reports a promotion that does not exist in the project.
+	ProjectErrorPromotionNotFound ProjectAPIErrorCode = "PROMOTION_NOT_FOUND"
 	// ProjectErrorInternal reports an unexpected server failure.
 	ProjectErrorInternal ProjectAPIErrorCode = "INTERNAL_ERROR"
 )

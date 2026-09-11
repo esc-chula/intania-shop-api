@@ -124,6 +124,18 @@ The clean product model retains name, description, price, status, category, stoc
 
 Stock adjustments lock the affected row and persist the transaction atomically. Inventory records retain reason, notes, references, actor, and confirmation image. The `ORDER` transaction type is reserved for future Project/POS checkout.
 
+### Project Promotions
+
+| Method | Path | Authorization | Description |
+| --- | --- | --- | --- |
+| `GET` | `/projects/{project_id}/promotions` | Authenticated | List project Promotions with current item data and calculated totals |
+| `POST` | `/projects/{project_id}/promotions` | `ADMIN` | Create a Promotion |
+| `GET` | `/projects/{project_id}/promotions/{promotion_id}` | Authenticated | Get one hydrated Promotion |
+| `PUT` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Replace the complete Promotion and item set atomically |
+| `DELETE` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Delete a Promotion |
+
+Promotion prices are fixed THB amounts represented as JSON strings with two decimal places. Responses recalculate `original_bundle_price` and `discount` from the current Project Product prices. Cart pricing, applied Promotions, and best-discount selection are planned for BE-007.
+
 ## Documentation
 
 - [`docs/openapi.yaml`](docs/openapi.yaml) is the single machine-readable source of truth.
