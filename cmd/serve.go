@@ -54,27 +54,38 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("initialize GCS uploader: %w", err)
 	}
 	defer func() { _ = uploader.Close() }()
+
 	users := repositories.NewUserRepository(pool)
 	authHandler := handlers.NewAuthHandler(oauth, usecases.NewAuthService(users, tokens))
 	productHandler := handlers.NewProductHandler(usecases.NewProductService(repositories.NewProductRepository(pool)))
 	productAdminHandler := handlers.NewProductAdminHandler(usecases.NewProductAdminService(repositories.NewProductRepository(pool)))
 	inventoryHandler := handlers.NewInventoryHandler(usecases.NewInventoryService(repositories.NewInventoryRepository(pool)))
+
 	projects := repositories.NewProjectRepository(pool)
 	projectService := usecases.NewProjectService(projects)
 	projectHandler := handlers.NewProjectHandler(projectService)
+
+	promotion := repositories.NewPromotionRepository(pool)
+	promotionService := usecases.NewPromotionService(promotion)
+	promotionAdminService := usecases.NewPromotionAdminService(promotion)
+	promotionHandler := handlers.NewPromotionHandler(promotionService)
+	promotionAdminHandler := handlers.NewPromotionAdminHandler(promotionAdminService)
+
 	uploadHandler := handlers.NewUploadHandler(uploader)
 
 	handler := server.NewHandler(server.Dependencies{
-		Logger:              logger,
-		Database:            pool,
-		CORSAllowedOrigins:  cfg.CORS.AllowedOrigins,
-		AuthHandler:         authHandler,
-		ProductHandler:      productHandler,
-		ProductAdminHandler: productAdminHandler,
-		InventoryHandler:    inventoryHandler,
-		ProjectHandler:      projectHandler,
-		UploadHandler:       uploadHandler,
-		TokenVerifier:       tokens,
+		Logger:                logger,
+		Database:              pool,
+		CORSAllowedOrigins:    cfg.CORS.AllowedOrigins,
+		AuthHandler:           authHandler,
+		ProductHandler:        productHandler,
+		ProductAdminHandler:   productAdminHandler,
+		InventoryHandler:      inventoryHandler,
+		ProjectHandler:        projectHandler,
+		PromotionHandler:      promotionHandler,
+		PromotionAdminHandler: promotionAdminHandler,
+		UploadHandler:         uploadHandler,
+		TokenVerifier:         tokens,
 	})
 	httpServer := server.NewHTTPServer(cfg.Server, handler)
 

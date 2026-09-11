@@ -16,6 +16,5 @@ CREATE UNIQUE INDEX uq_project_products_identity
 CREATE UNIQUE INDEX uq_project_products_id_project
     ON project_products (project_product_id, project_id);
 CREATE INDEX idx_project_products_project ON project_products (project_id);
-
 -- +goose Down
 DROP TABLE IF EXISTS project_products;
