@@ -218,6 +218,9 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid project ID")
 	case errors.Is(err, usecases.ErrInvalidPOSCart), errors.Is(err, repositories.ErrPOSDuplicateCartItem):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid POS Cart")
+	case errors.Is(err, models.ErrTHBAmountOverflow):
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation,
+			"POS quotation exceeds the supported amount range")
 	case errors.Is(err, repositories.ErrProjectNotFound):
 		writeProjectError(writer, request, http.StatusNotFound, models.ProjectErrorNotFound, "Project not found")
 	case errors.Is(err, usecases.ErrProjectNotActive):

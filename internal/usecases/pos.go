@@ -21,6 +21,11 @@ var (
 	ErrInsufficientStock = errors.New("insufficient stock")
 )
 
+// PostgreSQL accepts at most 65,535 bind parameters. The POS Cart query uses
+// one project parameter and four parameters per Cart item, so this bound keeps
+// every request below that protocol limit before SQL is expanded.
+const posCartMaxItems = (65535 - 1) / 4
+
 // POSValidationError carries a client-facing message for a malformed POS
 // Cart while retaining a stable sentinel for transport mapping.
 type POSValidationError struct{ Message string }
@@ -141,6 +146,10 @@ func validatePOSCartRequest(request models.POSCartRequest) error {
 		return POSValidationError{Message: "Cart must contain at least one item"}
 	}
 
+	if len(request.Items) > posCartMaxItems {
+		return POSValidationError{Message: fmt.Sprintf("Cart cannot contain more than %d items", posCartMaxItems)}
+	}
+
 	seen := make(map[posCartItemKey]struct{}, len(request.Items))
 	for index, item := range request.Items {
 		if item.ProductID <= 0 {
@@ -190,7 +199,8 @@ func groupPOSCategories(items []models.POSResolvedItem) []models.POSCategory {
 
 	for _, item := range items {
 		product := projectProductFromPOSItem(item)
-		if item.Category == nil {
+		category := normalizedPOSCategory(item.Category)
+		if category == nil {
 			if uncategorized == nil {
 				uncategorized = &posCategoryGroup{products: make([]models.ProjectProductAssignment, 0)}
 			}
@@ -198,7 +208,7 @@ func groupPOSCategories(items []models.POSResolvedItem) []models.POSCategory {
 			continue
 		}
 
-		categoryName := *item.Category
+		categoryName := *category
 		group, exists := named[categoryName]
 		if !exists {
 			name := categoryName
@@ -243,13 +253,21 @@ func projectProductFromPOSItem(item models.POSResolvedItem) models.ProjectProduc
 		ProductID:     item.ProductID,
 		VariantID:     clonePOSInt64(item.VariantID),
 		ProductName:   item.ProductName,
-		Category:      clonePOSString(item.Category),
+		Category:      normalizedPOSCategory(item.Category),
 		ImageURL:      clonePOSString(item.ImageURL),
 		Size:          clonePOSString(item.Size),
 		Color:         clonePOSString(item.Color),
 		StockQuantity: item.StockQuantity,
 		ProjectPrice:  item.ProjectPrice.String(),
 	}
+}
+
+func normalizedPOSCategory(value *string) *string {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil
+	}
+
+	return clonePOSString(value)
 }
 
 func pricingCartFromSnapshot(items []models.POSResolvedCartItem) []models.PricingCartLine {

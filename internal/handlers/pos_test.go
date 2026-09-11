@@ -185,6 +185,12 @@ func TestPOSHandlerMapsDomainErrors(t *testing.T) {
 			wantCode:   models.ProjectErrorInsufficientStock,
 		},
 		{
+			name:       "amount overflow",
+			err:        models.ErrTHBAmountOverflow,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   models.ProjectErrorValidation,
+		},
+		{
 			name:       "unexpected",
 			err:        errors.New("database unavailable"),
 			wantStatus: http.StatusInternalServerError,

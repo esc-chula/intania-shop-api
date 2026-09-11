@@ -62,6 +62,30 @@ func TestPOSServiceCatalogGroupsAndSortsCategories(t *testing.T) {
 	}
 }
 
+func TestPOSServiceCatalogTreatsBlankCategoriesAsUncategorized(t *testing.T) {
+	blank := "   "
+	reader := &posSnapshotReaderStub{
+		catalog: models.POSCatalogSnapshot{
+			Project: models.Project{ProjectID: 7, Status: models.ProjectStatusActive},
+			Items: []models.POSResolvedItem{
+				{ProductID: 1, ProductName: "Blank", Category: &blank, ProjectPrice: posTestAmount(t, "10.00")},
+			},
+		},
+	}
+
+	catalog, err := NewPOSService(reader).Catalog(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(catalog.Categories) != 1 || catalog.Categories[0].Name != nil {
+		t.Fatalf("categories = %+v, want one uncategorized group", catalog.Categories)
+	}
+	if len(catalog.Categories[0].Products) != 1 || catalog.Categories[0].Products[0].Category != nil {
+		t.Fatalf("uncategorized product = %+v", catalog.Categories[0].Products)
+	}
+}
+
 func TestPOSServiceCatalogValidatesProjectIDAndPropagatesReaderError(t *testing.T) {
 	readerError := errors.New("catalogue unavailable")
 	reader := &posSnapshotReaderStub{catalogErr: readerError}
@@ -195,6 +219,29 @@ func TestPOSServiceQuoteValidatesCartBeforePersistence(t *testing.T) {
 		{ProductID: 1, VariantID: &variantID, Quantity: 1},
 	}}); err != nil {
 		t.Fatalf("variantless and variant identities rejected: %v", err)
+	}
+}
+
+func TestPOSServiceQuoteRejectsCartBeyondDatabaseParameterBound(t *testing.T) {
+	items := make([]models.POSCartItemRequest, posCartMaxItems+1)
+	for index := range items {
+		items[index] = models.POSCartItemRequest{
+			ProductID: int64(index + 1),
+			Quantity:  1,
+		}
+	}
+
+	reader := &posSnapshotReaderStub{}
+	_, err := NewPOSService(reader).Quote(context.Background(), 7, models.POSCartRequest{Items: items})
+	var validation POSValidationError
+	if !errors.As(err, &validation) || !errors.Is(err, ErrInvalidPOSCart) {
+		t.Fatalf("error = %v, want POSValidationError", err)
+	}
+	if validation.Message != "Cart cannot contain more than 16383 items" {
+		t.Fatalf("validation message = %q", validation.Message)
+	}
+	if reader.quoteCalls != 0 {
+		t.Fatal("oversized Cart reached the reader")
 	}
 }
 
