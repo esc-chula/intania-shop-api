@@ -32,6 +32,7 @@ type Dependencies struct {
 	PromotionHandler      *handlers.PromotionHandler
 	PromotionAdminHandler *handlers.PromotionAdminHandler
 	POSHandler            *handlers.POSHandler
+	PaymentSlipHandler    *handlers.PaymentSlipHandler
 	UploadHandler         *handlers.UploadHandler
 	TokenVerifier         middlewares.TokenVerifier
 }
@@ -88,6 +89,9 @@ func NewHandler(dependencies Dependencies) http.Handler {
 		}
 		if dependencies.POSHandler != nil {
 			dependencies.POSHandler.Register(admin)
+		}
+		if dependencies.PaymentSlipHandler != nil {
+			dependencies.PaymentSlipHandler.Register(admin)
 		}
 		if dependencies.UploadHandler != nil {
 			dependencies.UploadHandler.Register(admin)

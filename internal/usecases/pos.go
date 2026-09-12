@@ -50,25 +50,34 @@ func (err POSInsufficientStockError) Error() string {
 // Unwrap identifies this error as an insufficient-stock conflict.
 func (err POSInsufficientStockError) Unwrap() error { return ErrInsufficientStock }
 
-// POSSnapshotReader is the persistence port required by POSService. The
+// POSSnapshotReader is the read persistence port required by POSService. The
 // repository supplies both snapshots from one consistent database read.
 type POSSnapshotReader interface {
 	Catalog(context.Context, models.Date, int64) (models.POSCatalogSnapshot, error)
 	QuoteSnapshot(context.Context, models.Date, int64, []models.POSCartItemRequest) (models.POSQuoteSnapshot, error)
 }
 
+// POSStore adds atomic checkout to the read snapshots. The repository owns the
+// transaction and the row locks and calls the supplied planner with the locked
+// snapshot, so every checkout rule stays in this package.
+type POSStore interface {
+	POSSnapshotReader
+	Checkout(context.Context, models.Date, models.POSCheckoutCommand,
+		func(models.POSCheckoutSnapshot) (models.POSCheckoutPlan, error)) (models.POSOrder, bool, error)
+}
+
 // POSService validates POS requests, groups catalogue data, checks live stock,
 // and delegates money calculations to the reusable PricingService.
 type POSService struct {
-	reader  POSSnapshotReader
+	store   POSStore
 	pricing *PricingService
 	now     func() time.Time
 }
 
-// NewPOSService constructs a POS service over its snapshot reader.
-func NewPOSService(reader POSSnapshotReader) *POSService {
+// NewPOSService constructs a POS service over its persistence store.
+func NewPOSService(store POSStore) *POSService {
 	return &POSService{
-		reader:  reader,
+		store:   store,
 		pricing: NewPricingService(),
 		now:     time.Now,
 	}
@@ -82,7 +91,7 @@ func (service *POSService) Catalog(ctx context.Context, projectID int64) (models
 		return models.POSCatalog{}, ErrInvalidProjectID
 	}
 
-	snapshot, err := service.reader.Catalog(ctx, models.TodayInBangkok(service.now()), projectID)
+	snapshot, err := service.store.Catalog(ctx, models.TodayInBangkok(service.now()), projectID)
 	if err != nil {
 		return models.POSCatalog{}, fmt.Errorf("get POS catalogue: %w", err)
 	}
@@ -106,7 +115,7 @@ func (service *POSService) Quote(ctx context.Context, projectID int64, request m
 	}
 
 	now := service.now()
-	snapshot, err := service.reader.QuoteSnapshot(ctx, models.TodayInBangkok(now), projectID, request.Items)
+	snapshot, err := service.store.QuoteSnapshot(ctx, models.TodayInBangkok(now), projectID, request.Items)
 	if err != nil {
 		return models.POSQuote{}, fmt.Errorf("read POS quote snapshot: %w", err)
 	}
@@ -302,14 +311,30 @@ func findPOSStockConflicts(items []models.POSResolvedCartItem) []models.POSStock
 	return conflicts
 }
 
-func quoteLineItemsFromSnapshot(items []models.POSResolvedCartItem) ([]models.POSQuoteLineItem, error) {
-	lineItems := make([]models.POSQuoteLineItem, len(items))
+// posLineTotals prices every resolved Cart line, in request order. The pricing
+// result reports only the order totals, so the quotation and the checkout plan
+// both derive their per-line figures here.
+func posLineTotals(items []models.POSResolvedCartItem) ([]models.THBAmount, error) {
+	lineTotals := make([]models.THBAmount, len(items))
 	for index, item := range items {
 		lineTotal, err := item.Item.ProjectPrice.Mul(int64(item.Quantity))
 		if err != nil {
 			return nil, fmt.Errorf("calculate Cart item %d total: %w", index+1, err)
 		}
+		lineTotals[index] = lineTotal
+	}
 
+	return lineTotals, nil
+}
+
+func quoteLineItemsFromSnapshot(items []models.POSResolvedCartItem) ([]models.POSQuoteLineItem, error) {
+	lineTotals, err := posLineTotals(items)
+	if err != nil {
+		return nil, err
+	}
+
+	lineItems := make([]models.POSQuoteLineItem, len(items))
+	for index, item := range items {
 		lineItems[index] = models.POSQuoteLineItem{
 			ProductID:         item.Item.ProductID,
 			VariantID:         clonePOSInt64(item.Item.VariantID),
@@ -319,7 +344,7 @@ func quoteLineItemsFromSnapshot(items []models.POSResolvedCartItem) ([]models.PO
 			ImageURL:          clonePOSString(item.Item.ImageURL),
 			Quantity:          item.Quantity,
 			UnitPrice:         item.Item.ProjectPrice,
-			LineTotal:         lineTotal,
+			LineTotal:         lineTotals[index],
 			AvailableQuantity: item.Item.StockQuantity,
 		}
 	}
