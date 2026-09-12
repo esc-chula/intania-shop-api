@@ -65,6 +65,10 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	projectService := usecases.NewProjectService(projects)
 	projectHandler := handlers.NewProjectHandler(projectService)
 
+	orders := repositories.NewOrderRepository(pool, cfg.Storage.Bucket)
+	orderService := usecases.NewOrderService(orders, projects)
+	orderHandler := handlers.NewOrderHandler(orderService)
+
 	promotion := repositories.NewPromotionRepository(pool)
 	promotionService := usecases.NewPromotionService(promotion)
 	promotionAdminService := usecases.NewPromotionAdminService(promotion)
@@ -86,6 +90,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		ProductAdminHandler:   productAdminHandler,
 		InventoryHandler:      inventoryHandler,
 		ProjectHandler:        projectHandler,
+		OrderHandler:          orderHandler,
 		PromotionHandler:      promotionHandler,
 		PromotionAdminHandler: promotionAdminHandler,
 		POSHandler:            posHandler,

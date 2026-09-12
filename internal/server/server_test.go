@@ -11,6 +11,7 @@ import (
 
 	"github.com/esc-chula/intania-shop-api/internal/handlers"
 	"github.com/esc-chula/intania-shop-api/internal/models"
+	"github.com/esc-chula/intania-shop-api/internal/usecases"
 )
 
 func TestNewHandlerProtectsPOSRoutesWithAdminRole(t *testing.T) {
@@ -65,6 +66,42 @@ func TestNewHandlerDoesNotExposePOSRoutesWithoutAuthentication(t *testing.T) {
 	}
 }
 
+func TestNewHandlerProtectsOrderRoutesWithAdminRole(t *testing.T) {
+	tests := []struct {
+		name       string
+		header     string
+		identity   models.Identity
+		verifyErr  error
+		wantStatus int
+		wantCalls  int
+	}{
+		{name: "missing token", wantStatus: http.StatusUnauthorized},
+		{name: "invalid token", header: "Bearer invalid", verifyErr: errors.New("invalid token"), wantStatus: http.StatusUnauthorized},
+		{name: "user forbidden", header: "Bearer user", identity: models.Identity{UserID: 2, Role: models.RoleUser}, wantStatus: http.StatusForbidden},
+		{name: "admin allowed", header: "Bearer admin", identity: models.Identity{UserID: 1, Role: models.RoleAdmin}, wantStatus: http.StatusOK, wantCalls: 1},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			orderService := &serverOrderServiceStub{}
+			handler := NewHandler(Dependencies{
+				Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+				OrderHandler:  handlers.NewOrderHandler(orderService),
+				TokenVerifier: serverTokenVerifier{identity: test.identity, err: test.verifyErr},
+			})
+
+			request := httptest.NewRequest(http.MethodGet, "/projects/7/orders", nil)
+			request.Header.Set("Authorization", test.header)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if response.Code != test.wantStatus || orderService.listCalls != test.wantCalls {
+				t.Fatalf("status/calls = %d/%d, want %d/%d", response.Code, orderService.listCalls, test.wantStatus, test.wantCalls)
+			}
+		})
+	}
+}
+
 type serverTokenVerifier struct {
 	identity models.Identity
 	err      error
@@ -88,3 +125,22 @@ func (*serverPOSServiceStub) Quote(context.Context, int64, models.POSCartRequest
 }
 
 var _ handlers.POSService = (*serverPOSServiceStub)(nil)
+
+type serverOrderServiceStub struct {
+	listCalls int
+}
+
+func (stub *serverOrderServiceStub) List(context.Context, int64, usecases.OrderListQuery, int32, int32) (models.OrderListResponse, error) {
+	stub.listCalls++
+	return models.OrderListResponse{}, nil
+}
+
+func (*serverOrderServiceStub) Export(context.Context, int64, usecases.OrderListQuery) ([]models.Order, error) {
+	return nil, nil
+}
+
+func (*serverOrderServiceStub) Detail(context.Context, int64, int64) (models.Order, error) {
+	return models.Order{}, nil
+}
+
+var _ handlers.OrderService = (*serverOrderServiceStub)(nil)

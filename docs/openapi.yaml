@@ -22,8 +22,8 @@ tags:
   - { name: Projects, description: "Admin-only event project administration" }
   - { name: Project Products, description: "Admin-only project catalogue selection and pricing" }
   - { name: Project Promotions, description: "IMPLEMENTED — project-scoped Promotion CRUD and POS applied-promotion pricing are available" }
-  - { name: POS, description: "PARTIALLY IMPLEMENTED — event POS catalogue and quotation are available; checkout and orders remain planned" }
-  - { name: Project Orders, description: "PLANNED — project POS history and reporting; not implemented" }
+  - { name: POS, description: "PARTIALLY IMPLEMENTED — event POS catalogue and quotation are available; checkout (order creation) remains planned" }
+  - { name: Project Orders, description: "PARTIALLY IMPLEMENTED — order history list, detail, and Excel export are available; checkout (order creation) remains planned" }
 paths:
   /:
     get:
@@ -362,7 +362,7 @@ paths:
       operationId: updateProject
       tags: [Projects]
       summary: Update a project
-      description: Admin only. Every field is replaced, so an omitted `description` is cleared. Locking sale dates after the first project order is PLANNED and not enforced yet.
+      description: Admin only. Every field is replaced, so an omitted `description` is cleared. Sale dates cannot be changed to exclude the Bangkok calendar date of any order the project already has (`409 PROJECT_CONFLICT`).
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
       responses:
@@ -870,6 +870,7 @@ components:
         - PROJECT_HAS_ORDERS
         - PRODUCT_NOT_SELLABLE
         - PROMOTION_NOT_FOUND
+        - ORDER_NOT_FOUND
         - INSUFFICIENT_STOCK
         - INVALID_PAYMENT_SLIP
         - IDEMPOTENCY_KEY_REUSED

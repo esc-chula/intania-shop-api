@@ -203,8 +203,34 @@ func (repository *ProjectRepository) Create(ctx context.Context, today models.Da
 	return repository.Detail(ctx, today, projectID)
 }
 
+// ErrProjectSaleDatesConflict reports a start/end date change that would
+// exclude an order the project already has, making order history
+// inconsistent with the project's own sale period.
+var ErrProjectSaleDatesConflict = errors.New("project sale dates conflict with existing orders")
+
+// orderOutsideDateRangeQuery checks Bangkok calendar dates, matching how the
+// project status and order history default range are derived elsewhere.
+const orderOutsideDateRangeQuery = `SELECT EXISTS (
+	SELECT 1 FROM orders
+	WHERE project_id = $1
+	  AND ((created_at AT TIME ZONE 'Asia/Bangkok')::date < $2::date
+	   OR  (created_at AT TIME ZONE 'Asia/Bangkok')::date > $3::date)
+)`
+
 // Update replaces the editable columns of an existing project and reads it back.
+// A project with orders cannot have its sale dates narrowed past any order's
+// Bangkok calendar date, since that would make order history inconsistent
+// with the project's own reported sale period.
 func (repository *ProjectRepository) Update(ctx context.Context, today models.Date, projectID int64, input models.ProjectInput) (models.Project, error) {
+	var conflict bool
+	if err := repository.pool.QueryRow(ctx, orderOutsideDateRangeQuery,
+		projectID, input.StartDate.Time, input.EndDate.Time).Scan(&conflict); err != nil {
+		return models.Project{}, fmt.Errorf("check project order dates: %w", err)
+	}
+	if conflict {
+		return models.Project{}, ErrProjectSaleDatesConflict
+	}
+
 	tag, err := repository.pool.Exec(ctx, updateProjectQuery,
 		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time)
 	if err != nil {

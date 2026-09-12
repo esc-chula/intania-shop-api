@@ -1,0 +1,91 @@
+@baseUrl = http://localhost:8080
+@token = replace-with-admin-jwt
+@userToken = replace-with-user-jwt
+@projectId = 1
+@otherProjectId = 2
+@missingProjectId = 9223372036854770000
+@orderOneId = 1
+@orderTwoId = 2
+@missingOrderId = 9223372036854770000
+@staffId = 1
+
+# BE-008 (checkout) is not implemented yet, so this project's Orders must be
+# seeded directly in PostgreSQL before running these requests. Adjust the IDs
+# above to match what you seed. Example seed (after migration 00006 applies):
+#
+#   INSERT INTO users (full_name, email, role) VALUES ('Staff One', 'staff-one@example.com', 'ADMIN') RETURNING user_id;
+#   INSERT INTO stock_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after)
+#     VALUES (10, 'ORDER', -1, 10, 9) RETURNING transaction_id;
+#   INSERT INTO orders (project_id, order_number, staff_id, staff_full_name, staff_email,
+#       buyer_gender, buyer_age, buyer_student_alumni_year, payment_method, subtotal, discount, net_total)
+#     VALUES (1, 'ORD-0001', 1, 'Staff One', 'staff-one@example.com',
+#       'FEMALE', 21, 'Intania 105', 'QR_CODE', '100.00', '0.00', '100.00') RETURNING order_id;
+#   INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total, inventory_transaction_id)
+#     VALUES (1, 10, 'Sample product', 1, '100.00', '100.00', 1);
+
+### List orders with the default Bangkok date range (project start 00:00 to now)
+GET {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{token}}
+
+### List orders with an explicit created_from/created_to range
+GET {{baseUrl}}/projects/{{projectId}}/orders?created_from=2026-01-01T00:00:00%2B07:00&created_to=2026-12-31T23:59:59%2B07:00
+Authorization: Bearer {{token}}
+
+### Filter by order_number (partial match)
+GET {{baseUrl}}/projects/{{projectId}}/orders?order_number=ORD-0001
+Authorization: Bearer {{token}}
+
+### Filter by payment_method
+GET {{baseUrl}}/projects/{{projectId}}/orders?payment_method=QR_CODE
+Authorization: Bearer {{token}}
+
+### Filter by staff_id
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id={{staffId}}
+Authorization: Bearer {{token}}
+
+### Sort by net_total ascending, with a stable order_id tie-break
+GET {{baseUrl}}/projects/{{projectId}}/orders?sort_by=net_total&sort_order=asc
+Authorization: Bearer {{token}}
+
+### Paginate: page 2, page_size 1
+GET {{baseUrl}}/projects/{{projectId}}/orders?page=2&page_size=1
+Authorization: Bearer {{token}}
+
+### Get immutable order detail: item, staff, buyer, payment, and promotion snapshots
+GET {{baseUrl}}/projects/{{projectId}}/orders/{{orderOneId}}
+Authorization: Bearer {{token}}
+
+### Order belongs to a different project (404 ORDER_NOT_FOUND)
+GET {{baseUrl}}/projects/{{otherProjectId}}/orders/{{orderOneId}}
+Authorization: Bearer {{token}}
+
+### Order does not exist (404 ORDER_NOT_FOUND)
+GET {{baseUrl}}/projects/{{projectId}}/orders/{{missingOrderId}}
+Authorization: Bearer {{token}}
+
+### Missing project (404 PROJECT_NOT_FOUND)
+GET {{baseUrl}}/projects/{{missingProjectId}}/orders
+Authorization: Bearer {{token}}
+
+### Export filtered order history as Excel, using the same filters/sorting as list
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?payment_method=QR_CODE&sort_by=net_total&sort_order=asc
+Authorization: Bearer {{token}}
+
+### Project lifecycle guard: narrowing sale dates past an existing order is rejected (409 PROJECT_CONFLICT)
+# Use dates that would exclude orderOneId's created_at Bangkok calendar date.
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name":"Narrowed project","start_date":"2099-01-01","end_date":"2099-01-02"}
+
+### Project lifecycle guard: a project with orders cannot be deleted (409 PROJECT_HAS_ORDERS)
+DELETE {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{token}}
+
+### Authorization: omit the bearer token (401)
+GET {{baseUrl}}/projects/{{projectId}}/orders
+
+### Authorization: an authenticated USER token is forbidden (403)
+GET {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{userToken}}
