@@ -1,20 +1,23 @@
 # Intania Shop API
 
-Admin-only backend for authentication, product catalogue management, inventory, and uploads. The previous customer storefront domains have been removed. Project/POS is designed contract-first in the OpenAPI document and will be implemented next.
+Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, and POS catalogue and quotation. The previous customer storefront domains have been removed. POS checkout, orders, and reporting remain planned.
 
 ## Current scope
 
-The server currently implements 22 method/path combinations:
+The server currently implements the service, authentication, catalogue, inventory, upload, Project, Promotion, and POS routes documented below:
 
 - 4 service and documentation routes
 - 3 Google OAuth routes
 - 9 product and variant routes
 - 4 inventory routes
 - 2 upload routes
+- 8 Project and project-product routes
+- 5 Promotion routes
+- 2 POS catalogue and quotation routes
 
 All catalogue, inventory, and upload operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
 
-The interactive `/docs` page also shows the planned Project/POS operations. Their tags are explicitly labeled `PLANNED`; they are API contracts for frontend development and are not registered by the current server.
+The interactive `/docs` page shows the implemented Project, Promotion, and POS catalogue/quotation operations alongside planned checkout, order, and reporting operations. Only operations explicitly tagged `PLANNED` are API contracts that are not registered by the current server.
 
 ## Technology
 
@@ -134,13 +137,22 @@ Stock adjustments lock the affected row and persist the transaction atomically. 
 | `PUT` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Replace the complete Promotion and item set atomically |
 | `DELETE` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Delete a Promotion |
 
-Promotion prices are fixed THB amounts represented as JSON strings with two decimal places. Responses recalculate `original_bundle_price` and `discount` from the current Project Product prices. Cart pricing, applied Promotions, and best-discount selection are planned for BE-007.
+Promotion prices are fixed THB amounts represented as JSON strings with two decimal places. Responses recalculate `original_bundle_price` and `discount` from the current Project Product prices. POS quotations apply the eligible Promotion with the highest fixed-point discount, using the lowest `promotion_id` as the deterministic tie-breaker.
+
+### Admin POS catalogue and quotations
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/projects/{project_id}/pos` | Preview the selected Project catalogue with current stock and project prices |
+| `POST` | `/projects/{project_id}/checkout/quote` | Validate an ACTIVE-project Cart and calculate authoritative totals |
+
+Both endpoints require an `ADMIN` bearer token. The catalogue is available for preview in every Project status; `can_checkout` is true only for an `ACTIVE` Project. Quote requests contain only product/variant identities and positive quantities. Prices, stock, Promotions, discounts, and totals are resolved on the server.
 
 ## Documentation
 
 - [`docs/openapi.yaml`](docs/openapi.yaml) is the single machine-readable source of truth.
-- [`docs/project-pos-api-contract.md`](docs/project-pos-api-contract.md) is the review companion for planned Project/POS operations.
-- `/docs` renders both implemented and planned operations; planned tags say they are not implemented.
+- [`docs/project-pos-api-contract.md`](docs/project-pos-api-contract.md) is reserved for the review companion to the Project/POS contract.
+- `/docs` renders implemented Project/POS catalogue and quotation operations alongside planned checkout/order operations.
 
 ## Responses
 
@@ -150,13 +162,13 @@ Successful JSON responses use:
 {"success": true, "data": {}}
 ```
 
-Current implemented errors retain the existing human-readable shape:
+Legacy endpoints retain the existing human-readable shape:
 
 ```json
 {"success": false, "error": "Product not found"}
 ```
 
-The planned Project/POS contract extends errors with stable `code`, optional `details`, and `request_id`.
+Project/POS errors use stable `code`, optional `details`, and `request_id` fields. Stock conflicts include the affected Cart lines in `details.items`.
 
 ## Quality checks
 

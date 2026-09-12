@@ -20,12 +20,20 @@ func writeError(writer http.ResponseWriter, status int, message string) {
 // writeProjectError writes the Project/POS error envelope, which carries a
 // machine-readable code and the request identifier alongside the message.
 func writeProjectError(writer http.ResponseWriter, request *http.Request, status int, code models.ProjectAPIErrorCode, message string) {
-	writeJSON(writer, status, map[string]any{
+	writeProjectErrorWithDetails(writer, request, status, code, message, nil)
+}
+
+func writeProjectErrorWithDetails(writer http.ResponseWriter, request *http.Request, status int, code models.ProjectAPIErrorCode, message string, details any) {
+	body := map[string]any{
 		"success":    false,
 		"error":      message,
 		"code":       code,
 		"request_id": middlewares.ID(request.Context()),
-	})
+	}
+	if details != nil {
+		body["details"] = details
+	}
+	writeJSON(writer, status, body)
 }
 
 func writeJSON(writer http.ResponseWriter, status int, body any) {
