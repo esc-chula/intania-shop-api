@@ -212,7 +212,7 @@ func newOrderIntegrationFixture(t *testing.T, database *pgxpool.Pool) orderInteg
 		VALUES ($1, 'ORD-0002', $2, 'Staff One', 'staff-one@example.com',
 			'MALE', 'REAL_MONEY', '200.00', '0.00', true,
 			'100.00', '20.00', '80.00',
-			NULL, 'Bundle', '100.00', '80.00', '20.00')
+			1, 'Bundle', '100.00', '80.00', '20.00')
 		RETURNING order_id`, projectID, staffID).Scan(&orderTwoID); err != nil {
 		t.Fatalf("insert order two fixture: %v", err)
 	}
