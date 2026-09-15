@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
 	"github.com/esc-chula/intania-shop-api/internal/storage"
@@ -29,6 +30,8 @@ var paymentSlipContentTypes = map[string]struct{}{
 
 // paymentSlipFolder is the object storage prefix for uploaded slips.
 const paymentSlipFolder = "payment-slips"
+
+const paymentSlipCleanupTimeout = 5 * time.Second
 
 // PaymentSlipRecorder persists one uploaded slip so that checkout can verify
 // the object key it receives was issued by this server.
@@ -86,7 +89,9 @@ func (service *PaymentSlipService) Upload(ctx context.Context, upload PaymentSli
 	}
 	if err := service.slips.RecordPaymentSlip(ctx, slip, upload.UploadedBy); err != nil {
 		recordingErr := fmt.Errorf("record payment slip: %w", err)
-		if cleanupErr := service.uploader.Delete(ctx, object.ObjectName); cleanupErr != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), paymentSlipCleanupTimeout)
+		defer cancel()
+		if cleanupErr := service.uploader.Delete(cleanupCtx, object.ObjectName); cleanupErr != nil {
 			return models.PaymentSlip{}, errors.Join(recordingErr, fmt.Errorf("delete unrecorded payment slip: %w", cleanupErr))
 		}
 		return models.PaymentSlip{}, recordingErr
