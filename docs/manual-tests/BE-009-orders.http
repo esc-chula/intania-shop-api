@@ -8,20 +8,28 @@
 @orderTwoId = 2
 @missingOrderId = 9223372036854770000
 @staffId = 1
+@checkoutProductId = 1
 
-# BE-008 (checkout) is not implemented yet, so this project's Orders must be
-# seeded directly in PostgreSQL before running these requests. Adjust the IDs
-# above to match what you seed. Example seed (after migration 00006 applies):
-#
-#   INSERT INTO users (full_name, email, role) VALUES ('Staff One', 'staff-one@example.com', 'ADMIN') RETURNING user_id;
-#   INSERT INTO stock_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after)
-#     VALUES (10, 'ORDER', -1, 10, 9) RETURNING transaction_id;
-#   INSERT INTO orders (project_id, order_number, staff_id, staff_full_name, staff_email,
-#       buyer_gender, buyer_age, buyer_student_alumni_year, payment_method, subtotal, discount, net_total)
-#     VALUES (1, 'ORD-0001', 1, 'Staff One', 'staff-one@example.com',
-#       'FEMALE', 21, 'Intania 105', 'QR_CODE', '100.00', '0.00', '100.00') RETURNING order_id;
-#   INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total, inventory_transaction_id)
-#     VALUES (1, 10, 'Sample product', 1, '100.00', '100.00', 1);
+# Preconditions: projectId is ACTIVE, checkoutProductId is a selected
+# variantless Project Product with at least two units in stock, and token is an
+# ADMIN JWT. Copy data.order_id from these responses into orderOneId/orderTwoId.
+
+### Create the first order through BE-008 checkout
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{token}}
+Idempotency-Key: be009-history-order-1
+Content-Type: application/json
+
+{"buyer":{"gender":"FEMALE","age":21,"student_alumni_year":"Intania 105"},"items":[{"product_id":{{checkoutProductId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"1000000.00","no_change":true,"note":"BE-009 history test"}}
+
+### Create a second order for sorting and pagination
+# Configure an eligible Promotion first when promotion-snapshot coverage is required.
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{token}}
+Idempotency-Key: be009-history-order-2
+Content-Type: application/json
+
+{"buyer":{"gender":"MALE","age":22,"student_alumni_year":null},"items":[{"product_id":{{checkoutProductId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"1000000.00","no_change":true,"note":"BE-009 history test 2"}}
 
 ### List orders with the default Bangkok date range (project start 00:00 to now)
 GET {{baseUrl}}/projects/{{projectId}}/orders
@@ -41,6 +49,56 @@ Authorization: Bearer {{token}}
 
 ### Filter by staff_id
 GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id={{staffId}}
+Authorization: Bearer {{token}}
+
+### Accept a positive int64 staff_id larger than int32
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=2147483648
+Authorization: Bearer {{token}}
+
+### Reject non-numeric staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=abc
+Authorization: Bearer {{token}}
+
+### Reject blank staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=
+Authorization: Bearer {{token}}
+
+### Reject zero staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=0
+Authorization: Bearer {{token}}
+
+### Reject negative staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=-1
+Authorization: Bearer {{token}}
+
+### Reject staff_id above int64 range (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=9223372036854775808
+Authorization: Bearer {{token}}
+
+### Reject repeated staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=1&staff_id=2
+Authorization: Bearer {{token}}
+
+### Repeat the staff_id contract checks against export
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=2147483648
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=abc
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=0
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=-1
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=9223372036854775808
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=1&staff_id=2
 Authorization: Bearer {{token}}
 
 ### Sort by net_total ascending, with a stable order_id tie-break
