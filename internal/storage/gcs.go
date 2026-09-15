@@ -21,6 +21,7 @@ type Object struct {
 // Uploader stores one object under a configured logical folder.
 type Uploader interface {
 	Upload(context.Context, string, string, string, io.Reader) (Object, error)
+	Delete(context.Context, string) error
 }
 
 // GCSUploader stores objects in Google Cloud Storage using application-default credentials.
@@ -59,6 +60,15 @@ func (u *GCSUploader) Upload(ctx context.Context, folder, filename, contentType 
 	}
 	return Object{URL: "https://storage.googleapis.com/" + u.bucket + "/" + name, ObjectName: name}, nil
 }
+
+// Delete removes one object from the configured bucket.
+func (u *GCSUploader) Delete(ctx context.Context, objectName string) error {
+	if err := u.client.Bucket(u.bucket).Object(objectName).Delete(ctx); err != nil {
+		return fmt.Errorf("delete object: %w", err)
+	}
+	return nil
+}
+
 func sanitize(value string) string {
 	base := strings.TrimSuffix(path.Base(value), path.Ext(value))
 	return strings.Map(func(r rune) rune {

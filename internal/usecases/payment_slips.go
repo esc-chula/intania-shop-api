@@ -85,7 +85,11 @@ func (service *PaymentSlipService) Upload(ctx context.Context, upload PaymentSli
 		Size:        upload.Size,
 	}
 	if err := service.slips.RecordPaymentSlip(ctx, slip, upload.UploadedBy); err != nil {
-		return models.PaymentSlip{}, fmt.Errorf("record payment slip: %w", err)
+		recordingErr := fmt.Errorf("record payment slip: %w", err)
+		if cleanupErr := service.uploader.Delete(ctx, object.ObjectName); cleanupErr != nil {
+			return models.PaymentSlip{}, errors.Join(recordingErr, fmt.Errorf("delete unrecorded payment slip: %w", cleanupErr))
+		}
+		return models.PaymentSlip{}, recordingErr
 	}
 
 	return slip, nil
