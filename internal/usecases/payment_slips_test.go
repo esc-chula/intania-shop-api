@@ -44,6 +44,9 @@ func TestPaymentSlipServiceStoresAndRecordsATrustedSlip(t *testing.T) {
 	if recorder.calls != 1 || recorder.uploadedBy != 42 || recorder.slip != slip {
 		t.Fatalf("recorded slip = %+v by %d over %d calls", recorder.slip, recorder.uploadedBy, recorder.calls)
 	}
+	if uploader.deleteCalls != 0 {
+		t.Fatalf("delete calls = %d, want 0", uploader.deleteCalls)
+	}
 }
 
 func TestPaymentSlipServiceRejectsUnacceptableUploadsBeforeStoringThem(t *testing.T) {
@@ -101,15 +104,73 @@ func TestPaymentSlipServiceAcceptsEveryDocumentedImageType(t *testing.T) {
 
 func TestPaymentSlipServiceReportsStorageAndRecordingFailures(t *testing.T) {
 	storageFailure := errors.New("bucket unavailable")
-	service := NewPaymentSlipService(&paymentSlipUploaderStub{err: storageFailure}, &paymentSlipRecorderStub{})
+	failedUploader := &paymentSlipUploaderStub{err: storageFailure}
+	service := NewPaymentSlipService(failedUploader, &paymentSlipRecorderStub{})
 	if _, err := service.Upload(context.Background(), paymentSlipTestUpload()); !errors.Is(err, storageFailure) {
 		t.Fatalf("storage error = %v", err)
 	}
+	if failedUploader.deleteCalls != 0 {
+		t.Fatalf("storage failure delete calls = %d, want 0", failedUploader.deleteCalls)
+	}
 
 	recordFailure := errors.New("database unavailable")
-	service = NewPaymentSlipService(&paymentSlipUploaderStub{}, &paymentSlipRecorderStub{err: recordFailure})
+	uploader := &paymentSlipUploaderStub{object: storage.Object{ObjectName: "payment-slips/server-generated.png"}}
+	service = NewPaymentSlipService(uploader, &paymentSlipRecorderStub{err: recordFailure})
 	if _, err := service.Upload(context.Background(), paymentSlipTestUpload()); !errors.Is(err, recordFailure) {
 		t.Fatalf("recording error = %v", err)
+	}
+	if uploader.deletedObject != uploader.object.ObjectName {
+		t.Fatalf("deleted object = %q, want %q", uploader.deletedObject, uploader.object.ObjectName)
+	}
+	if uploader.deleteCalls != 1 {
+		t.Fatalf("delete calls = %d, want 1", uploader.deleteCalls)
+	}
+}
+
+func TestPaymentSlipServicePreservesRecordingAndCleanupFailures(t *testing.T) {
+	recordFailure := errors.New("database unavailable")
+	cleanupFailure := errors.New("storage cleanup unavailable")
+	uploader := &paymentSlipUploaderStub{
+		object:    storage.Object{ObjectName: "payment-slips/server-generated.png"},
+		deleteErr: cleanupFailure,
+	}
+	service := NewPaymentSlipService(uploader, &paymentSlipRecorderStub{err: recordFailure})
+
+	_, err := service.Upload(context.Background(), paymentSlipTestUpload())
+	if !errors.Is(err, recordFailure) {
+		t.Fatalf("error = %v, want recording failure", err)
+	}
+	if !errors.Is(err, cleanupFailure) {
+		t.Fatalf("error = %v, want cleanup failure", err)
+	}
+	if uploader.deletedObject != uploader.object.ObjectName {
+		t.Fatalf("deleted object = %q, want %q", uploader.deletedObject, uploader.object.ObjectName)
+	}
+	if uploader.deleteCalls != 1 {
+		t.Fatalf("delete calls = %d, want 1", uploader.deleteCalls)
+	}
+}
+
+func TestPaymentSlipServiceCleansUpAfterRequestCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	recordFailure := context.Canceled
+	uploader := &paymentSlipUploaderStub{object: storage.Object{ObjectName: "payment-slips/server-generated.png"}}
+	service := NewPaymentSlipService(uploader, &paymentSlipRecorderStub{
+		err:      recordFailure,
+		onRecord: cancel,
+	})
+
+	_, err := service.Upload(ctx, paymentSlipTestUpload())
+	if !errors.Is(err, recordFailure) {
+		t.Fatalf("error = %v, want recording failure", err)
+	}
+	if uploader.deletedObject != uploader.object.ObjectName {
+		t.Fatalf("deleted object = %q, want %q", uploader.deletedObject, uploader.object.ObjectName)
+	}
+	if uploader.deleteContextErr != nil {
+		t.Fatalf("delete context error = %v, want nil", uploader.deleteContextErr)
 	}
 }
 
@@ -124,12 +185,16 @@ func paymentSlipTestUpload() PaymentSlipUpload {
 }
 
 type paymentSlipUploaderStub struct {
-	object   storage.Object
-	err      error
-	calls    int
-	folder   string
-	filename string
-	body     string
+	object           storage.Object
+	err              error
+	calls            int
+	folder           string
+	filename         string
+	body             string
+	deleteErr        error
+	deletedObject    string
+	deleteCalls      int
+	deleteContextErr error
 }
 
 func (stub *paymentSlipUploaderStub) Upload(_ context.Context, folder, filename, _ string, source io.Reader) (storage.Object, error) {
@@ -149,16 +214,27 @@ func (stub *paymentSlipUploaderStub) Upload(_ context.Context, folder, filename,
 	return stub.object, nil
 }
 
+func (stub *paymentSlipUploaderStub) Delete(ctx context.Context, objectName string) error {
+	stub.deleteCalls++
+	stub.deletedObject = objectName
+	stub.deleteContextErr = ctx.Err()
+	return stub.deleteErr
+}
+
 type paymentSlipRecorderStub struct {
 	err        error
 	calls      int
 	slip       models.PaymentSlip
 	uploadedBy int64
+	onRecord   func()
 }
 
 func (stub *paymentSlipRecorderStub) RecordPaymentSlip(_ context.Context, slip models.PaymentSlip, uploadedBy int64) error {
 	stub.calls++
 	stub.slip = slip
 	stub.uploadedBy = uploadedBy
+	if stub.onRecord != nil {
+		stub.onRecord()
+	}
 	return stub.err
 }

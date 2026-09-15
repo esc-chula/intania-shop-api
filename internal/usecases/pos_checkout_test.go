@@ -117,7 +117,6 @@ func TestPOSServiceCheckoutRejectsCashThatDoesNotSettleTheTotal(t *testing.T) {
 		message  string
 	}{
 		{name: "less than the total", received: "129.99", noChange: false, message: "is less than the order total"},
-		{name: "excess while declining change", received: "200.00", noChange: true, message: "exactly when no_change is true"},
 	}
 
 	for _, test := range tests {
@@ -135,6 +134,33 @@ func TestPOSServiceCheckoutRejectsCashThatDoesNotSettleTheTotal(t *testing.T) {
 			if store.planned {
 				t.Fatal("a rejected payment still produced a checkout plan")
 			}
+		})
+	}
+}
+
+func TestPlanPOSPaymentSettlesCashTender(t *testing.T) {
+	netTotal := posTestAmount(t, "130.00")
+	tests := []struct {
+		name         string
+		received     string
+		noChange     bool
+		wantChange   string
+		wantRetained string
+	}{
+		{name: "exact tender", received: "130.00", noChange: false, wantChange: "0.00", wantRetained: "0.00"},
+		{name: "exact tender with no change requested", received: "130.00", noChange: true, wantChange: "0.00", wantRetained: "0.00"},
+		{name: "excess with change returned", received: "160.00", noChange: false, wantChange: "30.00", wantRetained: "0.00"},
+		{name: "excess retained when no change is requested", received: "160.00", noChange: true, wantChange: "0.00", wantRetained: "30.00"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payment, err := planPOSPayment(posCashCheckoutRequest(t, test.received, test.noChange).Payment, nil, netTotal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertAmount(t, *payment.ChangeAmount, test.wantChange)
+			assertAmount(t, *payment.RetainedAmount, test.wantRetained)
 		})
 	}
 }

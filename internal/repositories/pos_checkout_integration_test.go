@@ -21,7 +21,7 @@ func TestPOSRepositoryCheckoutWritesTheWholeOrderAtomically(t *testing.T) {
 	setCheckoutStock(t, database, fixture, 7, 3, 5)
 
 	repository := NewPOSRepository(database)
-	command := cashCheckoutCommand(t, fixture, staffID, "checkout-key-1", "200.00", false)
+	command := cashCheckoutCommand(t, fixture, staffID, "checkout-key-1", "200.00", true)
 
 	order, replayed, err := repository.Checkout(ctx, fixture.Today, command, checkoutPlanner(t, command, nil))
 	if err != nil {
@@ -55,8 +55,11 @@ func TestPOSRepositoryCheckoutWritesTheWholeOrderAtomically(t *testing.T) {
 		t.Fatalf("payment = %+v", order.Payment)
 	}
 	assertOrderAmount(t, *order.Payment.ReceivedAmount, "200.00")
-	assertOrderAmount(t, *order.Payment.ChangeAmount, "20.00")
-	assertOrderAmount(t, *order.Payment.RetainedAmount, "0.00")
+	assertOrderAmount(t, *order.Payment.ChangeAmount, "0.00")
+	assertOrderAmount(t, *order.Payment.RetainedAmount, "20.00")
+	if order.Payment.NoChange == nil || !*order.Payment.NoChange {
+		t.Fatalf("no_change = %+v, want true", order.Payment.NoChange)
+	}
 
 	if len(order.Items) != 2 {
 		t.Fatalf("order items = %+v", order.Items)
@@ -409,12 +412,17 @@ func settleCheckoutPayment(request models.POSPaymentRequest, slip *models.Paymen
 	}
 
 	received := *request.ReceivedAmount
-	change, err := received.Sub(netTotal)
+	excess, err := received.Sub(netTotal)
 	if err != nil {
 		return models.POSPaymentSnapshot{}, err
 	}
+	change := excess
 	retained := models.THBAmount{}
 	noChange := *request.NoChange
+	if noChange {
+		change = models.THBAmount{}
+		retained = excess
+	}
 
 	return models.POSPaymentSnapshot{
 		Method:         models.POSPaymentRealMoney,
