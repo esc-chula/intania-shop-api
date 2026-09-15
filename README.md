@@ -159,7 +159,7 @@ All three endpoints require an `ADMIN` bearer token. The catalogue is available 
 - A quotation is a preview and reserves nothing; only checkout reduces stock.
 - Snapshots keep the name, variant text, image, and prices that applied at payment time, so later catalogue or Promotion edits never rewrite a paid order.
 - `QR_CODE` payments must reference a `slip_object_key` returned by `POST /upload/payment-slips`, and each slip can back only one order.
-- `REAL_MONEY` payments must cover the server-calculated `net_total`, and must tender it exactly when `no_change` is true.
+- `REAL_MONEY` payments must cover the server-calculated `net_total`. When `no_change` is true, any excess is retained rather than returned as change.
 - Retrying with the same `Idempotency-Key` and the same payload returns the stored order with `Idempotency-Replayed: true` and `200`, without reducing stock again. The same key with a different payload is rejected with `IDEMPOTENCY_KEY_REUSED`.
 
 ## Documentation

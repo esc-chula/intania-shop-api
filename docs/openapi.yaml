@@ -792,6 +792,12 @@ components:
                 buyer: { gender: PREFER_NOT_TO_SAY, age: 0, student_alumni_year: null }
                 items: [{ product_id: 11, variant_id: null, quantity: 2 }]
                 payment: { method: REAL_MONEY, received_amount: "118.00", no_change: true, note: null }
+            cashRetained:
+              summary: Cash excess retained when no change is requested
+              value:
+                buyer: { gender: PREFER_NOT_TO_SAY, age: 0, student_alumni_year: null }
+                items: [{ product_id: 11, variant_id: null, quantity: 2 }]
+                payment: { method: REAL_MONEY, received_amount: "150.00", no_change: true, note: Customer declined change }
             cashWithChange:
               summary: Cash with change given back
               value:
@@ -1188,8 +1194,8 @@ components:
         method: { type: string, const: REAL_MONEY }
         received_amount:
           allOf: [{ $ref: "#/components/schemas/THBAmount" }]
-          description: Cash tendered by the buyer. It must cover the server-calculated `net_total`, and must equal it exactly when `no_change` is true.
-        no_change: { type: boolean, description: "True when the buyer is given no change, which requires the exact amount" }
+          description: Cash tendered by the buyer. It must cover the server-calculated `net_total`; any excess is returned or retained according to `no_change`.
+        no_change: { type: boolean, description: "True when the buyer is given no change and any excess tender is retained" }
         note: { type: [string, "null"], maxLength: 500 }
     POSPaymentRequest:
       oneOf:
@@ -1233,7 +1239,7 @@ components:
           oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
         retained_amount:
           oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
-          description: Excess kept rather than returned. Declining change requires the exact amount, so a cash order records 0.00 here and a QR order records null.
+          description: Excess cash retained rather than returned when `no_change` is true. It is 0.00 for exact tender or when change is returned, and null for QR_CODE.
         no_change: { type: [boolean, "null"] }
         note: { type: [string, "null"], maxLength: 500 }
     POSOrderItemSnapshot:
@@ -1569,7 +1575,7 @@ components:
           subtotal: "358.00"
           discount: "29.00"
           net_total: "329.00"
-          payment: { method: QR_CODE, slip_url: "https://example.com/slip.png", received_amount: null, change_amount: null, retained_amount: null, no_change: null, note: Paid at booth 1 }
+          payment: { method: REAL_MONEY, slip_url: null, received_amount: "350.00", change_amount: "0.00", retained_amount: "21.00", no_change: true, note: Customer declined change }
           created_at: "2026-09-05T10:31:00+07:00"
     POSOrderListEnvelope:
       allOf:

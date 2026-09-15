@@ -84,7 +84,7 @@ func planPOSCheckout(pricing *PricingService, command models.POSCheckoutCommand,
 
 // planPOSPayment settles the request against the server-calculated total. A QR
 // order records the URL of the trusted slip that persistence resolved; a cash
-// order must cover the total, and declining change requires the exact amount.
+// order must cover the total, and excess is either returned or retained.
 func planPOSPayment(request models.POSPaymentRequest, slip *models.PaymentSlip, netTotal models.THBAmount) (models.POSPaymentSnapshot, error) {
 	snapshot := models.POSPaymentSnapshot{Method: request.Method, Note: request.Note}
 
@@ -112,15 +112,12 @@ func planPOSPayment(request models.POSPaymentRequest, slip *models.PaymentSlip, 
 		return models.POSPaymentSnapshot{}, fmt.Errorf("settle cash payment: %w", err)
 	}
 
-	change := excess
-	// Change is handed back rather than retained, so the retained amount stays
-	// zero: declining change requires the exact amount.
-	retained := models.THBAmount{}
 	noChange := *request.NoChange
-	if noChange && excess.Satang() != 0 {
-		return models.POSPaymentSnapshot{}, POSValidationError{
-			Message: fmt.Sprintf("Received amount must equal the order total %s exactly when no_change is true", netTotal),
-		}
+	change := excess
+	retained := models.THBAmount{}
+	if noChange {
+		change = models.THBAmount{}
+		retained = excess
 	}
 
 	snapshot.ReceivedAmount = &received
