@@ -21,7 +21,7 @@ func CORS(allowedOrigins []string) Middleware {
 					writer.Header().Set("Access-Control-Allow-Origin", origin)
 					writer.Header().Set("Access-Control-Allow-Credentials", "true")
 					writer.Header().Add("Vary", "Origin")
-					writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Origin, User-Agent, X-Request-ID")
+					writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Origin, User-Agent, X-Request-ID, Idempotency-Key")
 					writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 				}
 			}
