@@ -90,6 +90,15 @@ const (
 	ProjectErrorNotActive ProjectAPIErrorCode = "PROJECT_NOT_ACTIVE"
 	// ProjectErrorInsufficientStock reports a Cart quantity above live stock.
 	ProjectErrorInsufficientStock ProjectAPIErrorCode = "INSUFFICIENT_STOCK"
+	// ProjectErrorInvalidPaymentSlip reports a QR checkout whose slip object
+	// key was not issued by this server or already backs another order.
+	ProjectErrorInvalidPaymentSlip ProjectAPIErrorCode = "INVALID_PAYMENT_SLIP"
+	// ProjectErrorIdempotencyKeyReused reports an Idempotency-Key replayed with
+	// a different payload.
+	ProjectErrorIdempotencyKeyReused ProjectAPIErrorCode = "IDEMPOTENCY_KEY_REUSED"
+	// ProjectErrorAuthenticationRequired reports a request without a usable
+	// authenticated identity.
+	ProjectErrorAuthenticationRequired ProjectAPIErrorCode = "AUTHENTICATION_REQUIRED"
 	// ProjectErrorInternal reports an unexpected server failure.
 	ProjectErrorInternal ProjectAPIErrorCode = "INTERNAL_ERROR"
 )

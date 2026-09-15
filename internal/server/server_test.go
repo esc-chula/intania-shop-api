@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/esc-chula/intania-shop-api/internal/handlers"
@@ -25,8 +26,8 @@ func TestNewHandlerProtectsPOSRoutesWithAdminRole(t *testing.T) {
 	}{
 		{name: "missing token", wantStatus: http.StatusUnauthorized},
 		{name: "invalid token", header: "Bearer invalid", verifyErr: errors.New("invalid token"), wantStatus: http.StatusUnauthorized},
-		{name: "user forbidden", header: "Bearer user", identity: models.Identity{UserID: 2, Role: models.RoleUser}, wantStatus: http.StatusForbidden},
-		{name: "admin allowed", header: "Bearer admin", identity: models.Identity{UserID: 1, Role: models.RoleAdmin}, wantStatus: http.StatusOK, wantCalls: 1},
+		{name: "user forbidden", header: "Bearer valid", identity: models.Identity{UserID: 2, Role: models.RoleUser}, wantStatus: http.StatusForbidden},
+		{name: "admin allowed", header: "Bearer valid", identity: models.Identity{UserID: 1, Role: models.RoleAdmin}, wantStatus: http.StatusOK, wantCalls: 1},
 	}
 
 	for _, test := range tests {
@@ -77,8 +78,8 @@ func TestNewHandlerProtectsOrderRoutesWithAdminRole(t *testing.T) {
 	}{
 		{name: "missing token", wantStatus: http.StatusUnauthorized},
 		{name: "invalid token", header: "Bearer invalid", verifyErr: errors.New("invalid token"), wantStatus: http.StatusUnauthorized},
-		{name: "user forbidden", header: "Bearer user", identity: models.Identity{UserID: 2, Role: models.RoleUser}, wantStatus: http.StatusForbidden},
-		{name: "admin allowed", header: "Bearer admin", identity: models.Identity{UserID: 1, Role: models.RoleAdmin}, wantStatus: http.StatusOK, wantCalls: 1},
+		{name: "user forbidden", header: "Bearer valid", identity: models.Identity{UserID: 2, Role: models.RoleUser}, wantStatus: http.StatusForbidden},
+		{name: "admin allowed", header: "Bearer valid", identity: models.Identity{UserID: 1, Role: models.RoleAdmin}, wantStatus: http.StatusOK, wantCalls: 1},
 	}
 
 	for _, test := range tests {
@@ -102,6 +103,57 @@ func TestNewHandlerProtectsOrderRoutesWithAdminRole(t *testing.T) {
 	}
 }
 
+func TestNewHandlerProtectsCheckoutAndPaymentSlipRoutesWithAdminRole(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{name: "create order", method: http.MethodPost, path: "/projects/7/orders", body: `{}`},
+		{name: "upload payment slip", method: http.MethodPost, path: "/upload/payment-slips", body: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, identity := range []struct {
+				name       string
+				header     string
+				role       models.Role
+				verifyErr  error
+				wantStatus int
+			}{
+				{name: "missing token", wantStatus: http.StatusUnauthorized},
+				{name: "invalid token", header: "Bearer invalid", verifyErr: errors.New("invalid token"), wantStatus: http.StatusUnauthorized},
+				{name: "user forbidden", header: "Bearer valid", role: models.RoleUser, wantStatus: http.StatusForbidden},
+			} {
+				t.Run(identity.name, func(t *testing.T) {
+					posService := &serverPOSServiceStub{}
+					slipService := &serverPaymentSlipServiceStub{}
+					handler := NewHandler(Dependencies{
+						Logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+						POSHandler:         handlers.NewPOSHandler(posService),
+						PaymentSlipHandler: handlers.NewPaymentSlipHandler(slipService),
+						TokenVerifier:      serverTokenVerifier{identity: models.Identity{UserID: 2, Role: identity.role}, err: identity.verifyErr},
+					})
+
+					request := httptest.NewRequest(test.method, test.path, strings.NewReader(test.body))
+					request.Header.Set("Authorization", identity.header)
+					response := httptest.NewRecorder()
+					handler.ServeHTTP(response, request)
+
+					if response.Code != identity.wantStatus {
+						t.Fatalf("status = %d, want %d", response.Code, identity.wantStatus)
+					}
+					if posService.checkoutCalls != 0 || slipService.calls != 0 {
+						t.Fatal("an unauthorized request reached a service")
+					}
+				})
+			}
+		})
+	}
+}
+
 type serverTokenVerifier struct {
 	identity models.Identity
 	err      error
@@ -112,7 +164,8 @@ func (verifier serverTokenVerifier) Verify(string) (models.Identity, error) {
 }
 
 type serverPOSServiceStub struct {
-	catalogCalls int
+	catalogCalls  int
+	checkoutCalls int
 }
 
 func (stub *serverPOSServiceStub) Catalog(context.Context, int64) (models.POSCatalog, error) {
@@ -124,7 +177,10 @@ func (*serverPOSServiceStub) Quote(context.Context, int64, models.POSCartRequest
 	return models.POSQuote{}, nil
 }
 
-var _ handlers.POSService = (*serverPOSServiceStub)(nil)
+func (stub *serverPOSServiceStub) Checkout(context.Context, int64, int64, string, models.POSCheckoutRequest) (models.POSOrder, bool, error) {
+	stub.checkoutCalls++
+	return models.POSOrder{OrderID: 99}, false, nil
+}
 
 type serverOrderServiceStub struct {
 	listCalls int
@@ -143,4 +199,15 @@ func (*serverOrderServiceStub) Detail(context.Context, int64, int64) (models.Ord
 	return models.Order{}, nil
 }
 
-var _ handlers.OrderService = (*serverOrderServiceStub)(nil)
+type serverPaymentSlipServiceStub struct{ calls int }
+
+func (stub *serverPaymentSlipServiceStub) Upload(context.Context, usecases.PaymentSlipUpload) (models.PaymentSlip, error) {
+	stub.calls++
+	return models.PaymentSlip{}, nil
+}
+
+var (
+	_ handlers.POSService         = (*serverPOSServiceStub)(nil)
+	_ handlers.OrderService       = (*serverOrderServiceStub)(nil)
+	_ handlers.PaymentSlipService = (*serverPaymentSlipServiceStub)(nil)
+)

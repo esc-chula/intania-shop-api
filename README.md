@@ -1,6 +1,6 @@
 # Intania Shop API
 
-Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, POS catalogue and quotation, and Project order history. The previous customer storefront domains have been removed. POS checkout (order creation) remains planned.
+Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, POS catalogue/quotation/paid checkout, and Project order history APIs (list, detail, export). The previous customer storefront domains have been removed.
 
 ## Current scope
 
@@ -10,15 +10,15 @@ The server currently implements the service, authentication, catalogue, inventor
 - 3 Google OAuth routes
 - 9 product and variant routes
 - 4 inventory routes
-- 2 upload routes
+- 3 upload routes
 - 8 Project and project-product routes
 - 5 Promotion routes
-- 2 POS catalogue and quotation routes
+- 3 POS catalogue, quotation, and checkout routes
 - 3 Project order history routes (list, detail, Excel export)
 
 All catalogue, inventory, upload, Project, Promotion (admin), POS, and order history operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
 
-The interactive `/docs` page shows the implemented Project, Promotion, POS catalogue/quotation, and order history operations alongside the still-planned POS checkout (order creation) operation. Only operations explicitly tagged `PLANNED` are API contracts that are not registered by the current server.
+The interactive `/docs` page shows the implemented Project, Promotion, POS, and order history operations. Only operations explicitly tagged `PLANNED` are API contracts that are not registered by the current server.
 
 ## Technology
 
@@ -125,8 +125,11 @@ The clean product model retains name, description, price, status, category, stoc
 | `GET` | `/stock/transactions` | All stock history |
 | `POST` | `/upload/product-images` | Upload product images |
 | `POST` | `/stock/upload-proof-images` | Upload a stock confirmation image |
+| `POST` | `/upload/payment-slips` | Upload one trusted QR payment slip |
 
-Stock adjustments lock the affected row and persist the transaction atomically. Inventory records retain reason, notes, references, actor, and confirmation image. The `ORDER` transaction type is reserved for future Project/POS checkout.
+Stock adjustments lock the affected row and persist the transaction atomically. Inventory records retain reason, notes, references, actor, and confirmation image. POS checkout writes the `ORDER` transaction type, referencing the order it belongs to.
+
+Payment slip uploads accept exactly one JPEG, PNG, or WebP image of at most 10 MiB in the `file` field. The content type is detected from the file itself, and the returned `object_key` is the only slip reference checkout accepts.
 
 ### Project Promotions
 
@@ -146,8 +149,19 @@ Promotion prices are fixed THB amounts represented as JSON strings with two deci
 | --- | --- | --- |
 | `GET` | `/projects/{project_id}/pos` | Preview the selected Project catalogue with current stock and project prices |
 | `POST` | `/projects/{project_id}/checkout/quote` | Validate an ACTIVE-project Cart and calculate authoritative totals |
+| `POST` | `/projects/{project_id}/orders` | Create a paid order and reduce stock atomically |
 
-Both endpoints require an `ADMIN` bearer token. The catalogue is available for preview in every Project status; `can_checkout` is true only for an `ACTIVE` Project. Quote requests contain only product/variant identities and positive quantities. Prices, stock, Promotions, discounts, and totals are resolved on the server.
+All three endpoints require an `ADMIN` bearer token. The catalogue is available for preview in every Project status; `can_checkout` is true only for an `ACTIVE` Project. Quote and checkout requests contain only product/variant identities and positive quantities. Prices, stock, Promotions, discounts, and totals are resolved on the server.
+
+### Atomic POS checkout
+
+`POST /projects/{project_id}/orders` requires an `Idempotency-Key` header and an `ACTIVE` Project. One transaction locks the Project and the stock rows of every requested item, revalidates the selection, prices, Promotions, and stock, then writes the order, its item, payment, and Promotion snapshots, and one `ORDER` stock transaction per line. Any rejection rolls the whole set back, so a failed checkout leaves no order, payment, snapshot, or stock change behind.
+
+- A quotation is a preview and reserves nothing; only checkout reduces stock.
+- Snapshots keep the name, variant text, image, and prices that applied at payment time, so later catalogue or Promotion edits never rewrite a paid order.
+- `QR_CODE` payments must reference a `slip_object_key` returned by `POST /upload/payment-slips`, and each slip can back only one order.
+- `REAL_MONEY` payments must cover the server-calculated `net_total`. When `no_change` is true, any excess is retained rather than returned as change.
+- Retrying with the same `Idempotency-Key` and the same payload returns the stored order with `Idempotency-Replayed: true` and `200`, without reducing stock again. The same key with a different payload is rejected with `IDEMPOTENCY_KEY_REUSED`.
 
 ### Admin Project order history
 
@@ -161,13 +175,13 @@ All three require an `ADMIN` bearer token. `order_number`, `payment_method`, `st
 
 Every returned order reads the buyer, staff, payment, item, and applied-promotion data recorded at checkout; it is never rejoined against the current Product, User, or Promotion tables, so later edits to any of those never change order history. A Project that has orders cannot be deleted, and its sale dates cannot be changed to exclude an existing order's date (`409 PROJECT_CONFLICT`).
 
-POS checkout (the endpoint that creates these orders) is not implemented yet; order rows must currently be seeded directly for testing, as documented in [`docs/manual-tests/BE-009-orders.http`](docs/manual-tests/BE-009-orders.http).
+Order history reads immutable snapshots created by checkout; manual request coverage is documented in [`docs/manual-tests/BE-009-orders.http`](docs/manual-tests/BE-009-orders.http).
 
 ## Documentation
 
 - [`docs/openapi.yaml`](docs/openapi.yaml) is the single machine-readable source of truth.
 - [`docs/project-pos-api-contract.md`](docs/project-pos-api-contract.md) is reserved for the review companion to the Project/POS contract.
-- `/docs` renders implemented Project/POS catalogue, quotation, and order history operations alongside the planned checkout (order creation) operation.
+- `/docs` renders implemented Project/POS and order history operations.
 
 ## Responses
 

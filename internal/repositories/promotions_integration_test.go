@@ -484,7 +484,9 @@ func TestProjectDeleteWithOrdersRollsBackPromotionCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.Exec(context.Background(), `INSERT INTO orders (project_id) VALUES ($1)`, fixture.ProjectID); err != nil {
+	if _, err := database.Exec(context.Background(), `
+		INSERT INTO orders (project_id, order_number, subtotal, discount, net_total)
+		VALUES ($1::bigint, 'TEST-' || $1::bigint, 0, 0, 0)`, fixture.ProjectID); err != nil {
 		t.Fatal(err)
 	}
 

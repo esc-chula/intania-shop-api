@@ -6,10 +6,9 @@ info:
     Admin-only catalogue, inventory, and upload backend for the ESC Chula Intania Shop.
     Identity comes from Google OAuth and a JWT. Business operations require the ADMIN role.
 
-    Project read, product-assignment, Promotion CRUD, and POS catalogue/quotation operations
-    are implemented. POS payment, order, and reporting operations remain contract-first and
-    are marked as planned. They are visible for frontend development but are not implemented
-    by the current server.
+    Project read, product-assignment, Promotion CRUD, POS catalogue/quotation/checkout,
+    payment-slip upload, and Project order history (list/detail/export) operations are
+    implemented by the current server.
 servers:
   - url: /
     description: Same host as this documentation
@@ -22,8 +21,8 @@ tags:
   - { name: Projects, description: "Admin-only event project administration" }
   - { name: Project Products, description: "Admin-only project catalogue selection and pricing" }
   - { name: Project Promotions, description: "IMPLEMENTED — project-scoped Promotion CRUD and POS applied-promotion pricing are available" }
-  - { name: POS, description: "PARTIALLY IMPLEMENTED — event POS catalogue and quotation are available; checkout (order creation) remains planned" }
-  - { name: Project Orders, description: "PARTIALLY IMPLEMENTED — order history list, detail, and Excel export are available; checkout (order creation) remains planned" }
+  - { name: POS, description: "IMPLEMENTED — event POS catalogue, quotation, payment-slip upload, and atomic paid checkout are available" }
+  - { name: Project Orders, description: "IMPLEMENTED — project-scoped order history list, detail, and Excel export read checkout snapshots" }
 paths:
   /:
     get:
@@ -566,14 +565,14 @@ paths:
       operationId: uploadPaymentSlip
       tags: [Uploads, POS]
       summary: Upload a trusted POS QR payment slip
-      description: Admin only. Accepts one image up to 10 MiB. Checkout references the returned object key rather than an arbitrary URL.
+      description: Admin only. Accepts exactly one JPEG, PNG, or WebP image up to 10 MiB in the `file` field; the type is detected from the file itself. Checkout references the returned object key rather than an arbitrary URL, and one slip can back only one order.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/PaymentSlipUpload" }
       responses:
         "201": { $ref: "#/components/responses/PaymentSlip" }
         "400": { $ref: "#/components/responses/ProjectAPIError" }
-        "401": { $ref: "#/components/responses/ProjectAPIError" }
-        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/ProjectAPIError" }
         "500": { $ref: "#/components/responses/ProjectAPIError" }
   /projects/{project_id}/orders:
@@ -582,7 +581,7 @@ paths:
       operationId: createProjectPOSOrder
       tags: [POS, Project Orders]
       summary: Atomically create a paid POS order and reduce stock
-      description: Admin only and ACTIVE projects only. Identical retries return the original order; a key reused with different content returns `IDEMPOTENCY_KEY_REUSED`.
+      description: Admin only and ACTIVE projects only. Prices, Promotions, stock, and payment are revalidated inside the checkout transaction; nothing monetary is accepted from the client. Identical retries return the original order without reducing stock again; a key reused with different content returns `IDEMPOTENCY_KEY_REUSED`.
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody: { $ref: "#/components/requestBodies/POSCheckout" }
@@ -590,8 +589,8 @@ paths:
         "201": { $ref: "#/components/responses/POSOrder" }
         "200": { $ref: "#/components/responses/POSOrderReplay" }
         "400": { $ref: "#/components/responses/ProjectAPIError" }
-        "401": { $ref: "#/components/responses/ProjectAPIError" }
-        "403": { $ref: "#/components/responses/ProjectAPIError" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/ProjectAPIError" }
         "409": { $ref: "#/components/responses/ProjectAPIError" }
         "500": { $ref: "#/components/responses/ProjectAPIError" }
@@ -700,8 +699,8 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      description: UUID generated once per checkout attempt and reused only when retrying the identical request.
-      schema: { type: string, format: uuid }
+      description: Opaque key generated once per checkout attempt and reused only when retrying the identical request. A UUID is recommended.
+      schema: { type: string, minLength: 1, maxLength: 100 }
   requestBodies:
     CreateProduct:
       required: true
@@ -786,12 +785,24 @@ components:
                 buyer: { gender: FEMALE, age: 21, student_alumni_year: Intania 105 }
                 items: [{ product_id: 10, variant_id: 22, quantity: 1 }]
                 payment: { method: QR_CODE, slip_object_key: payment-slips/2026/08/example.png, note: Paid at booth 1 }
-            cashNoChange:
-              summary: Cash with retained excess
+            cashExact:
+              summary: Cash tendered exactly
               value:
                 buyer: { gender: PREFER_NOT_TO_SAY, age: 0, student_alumni_year: null }
                 items: [{ product_id: 11, variant_id: null, quantity: 2 }]
-                payment: { method: REAL_MONEY, received_amount: "500.00", no_change: true, note: null }
+                payment: { method: REAL_MONEY, received_amount: "118.00", no_change: true, note: null }
+            cashRetained:
+              summary: Cash excess retained when no change is requested
+              value:
+                buyer: { gender: PREFER_NOT_TO_SAY, age: 0, student_alumni_year: null }
+                items: [{ product_id: 11, variant_id: null, quantity: 2 }]
+                payment: { method: REAL_MONEY, received_amount: "150.00", no_change: true, note: Customer declined change }
+            cashWithChange:
+              summary: Cash with change given back
+              value:
+                buyer: { gender: MALE, age: 22, student_alumni_year: null }
+                items: [{ product_id: 11, variant_id: null, quantity: 2 }]
+                payment: { method: REAL_MONEY, received_amount: "500.00", no_change: false, note: null }
   responses:
     Error:
       description: Request failed
@@ -1160,7 +1171,7 @@ components:
       required: [gender]
       properties:
         gender: { type: string, enum: [MALE, FEMALE, PREFER_NOT_TO_SAY] }
-        age: { type: [integer, "null"], format: int32, minimum: 0 }
+        age: { type: [integer, "null"], format: int32, minimum: 0, maximum: 150 }
         student_alumni_year: { type: [string, "null"], maxLength: 50, description: Trimmed cohort text such as `Intania 105` or `2568` }
     POSPaymentMethod: { type: string, enum: [QR_CODE, REAL_MONEY] }
     POSQRPaymentRequest:
@@ -1169,7 +1180,11 @@ components:
       required: [method, slip_object_key]
       properties:
         method: { type: string, const: QR_CODE }
-        slip_object_key: { type: string, minLength: 1, maxLength: 1024 }
+        slip_object_key:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: Object key returned by `POST /upload/payment-slips`. An unknown key, or one that already backs an order, is rejected with `INVALID_PAYMENT_SLIP`.
         note: { type: [string, "null"], maxLength: 500 }
     POSCashPaymentRequest:
       type: object
@@ -1177,8 +1192,10 @@ components:
       required: [method, received_amount, no_change]
       properties:
         method: { type: string, const: REAL_MONEY }
-        received_amount: { $ref: "#/components/schemas/THBAmount" }
-        no_change: { type: boolean }
+        received_amount:
+          allOf: [{ $ref: "#/components/schemas/THBAmount" }]
+          description: Cash tendered by the buyer. It must cover the server-calculated `net_total`; any excess is returned or retained according to `no_change`.
+        no_change: { type: boolean, description: "True when the buyer is given no change and any excess tender is retained" }
         note: { type: [string, "null"], maxLength: 500 }
     POSPaymentRequest:
       oneOf:
@@ -1222,6 +1239,7 @@ components:
           oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
         retained_amount:
           oneOf: [{ $ref: "#/components/schemas/THBAmount" }, { type: "null" }]
+          description: Excess cash retained rather than returned when `no_change` is true. It is 0.00 for exact tender or when change is returned, and null for QR_CODE.
         no_change: { type: [boolean, "null"] }
         note: { type: [string, "null"], maxLength: 500 }
     POSOrderItemSnapshot:
@@ -1557,7 +1575,7 @@ components:
           subtotal: "358.00"
           discount: "29.00"
           net_total: "329.00"
-          payment: { method: QR_CODE, slip_url: "https://example.com/slip.png", received_amount: null, change_amount: null, retained_amount: null, no_change: null, note: Paid at booth 1 }
+          payment: { method: REAL_MONEY, slip_url: null, received_amount: "350.00", change_amount: "0.00", retained_amount: "21.00", no_change: true, note: Customer declined change }
           created_at: "2026-09-05T10:31:00+07:00"
     POSOrderListEnvelope:
       allOf:
