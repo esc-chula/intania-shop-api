@@ -18,8 +18,8 @@ import (
 // adapter.
 type OrderService interface {
 	List(context.Context, int64, usecases.OrderListQuery, int32, int32) (models.OrderListResponse, error)
-	Export(context.Context, int64, usecases.OrderListQuery) ([]models.Order, error)
-	Detail(context.Context, int64, int64) (models.Order, error)
+	Export(context.Context, int64, usecases.OrderListQuery) ([]models.POSOrder, error)
+	Detail(context.Context, int64, int64) (models.POSOrder, error)
 }
 
 // OrderHandler serves the project-scoped POS order history endpoints.
@@ -150,7 +150,7 @@ var orderExportColumns = []string{
 	"Promotion Name", "Discount", "Subtotal", "Net Total",
 }
 
-func buildOrderExportWorkbook(orders []models.Order) (*excelize.File, error) {
+func buildOrderExportWorkbook(orders []models.POSOrder) (*excelize.File, error) {
 	workbook := excelize.NewFile()
 	const sheet = "Orders"
 	if index, err := workbook.NewSheet(sheet); err == nil {

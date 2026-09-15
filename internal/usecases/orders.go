@@ -13,9 +13,9 @@ import (
 
 // OrderStore is the persistence port required by OrderService.
 type OrderStore interface {
-	List(context.Context, int64, models.OrderFilter, int32, int32) ([]models.Order, int64, error)
-	Export(context.Context, int64, models.OrderFilter) ([]models.Order, error)
-	Detail(context.Context, int64, int64) (models.Order, error)
+	List(context.Context, int64, models.OrderFilter, int32, int32) ([]models.POSOrder, int64, error)
+	Export(context.Context, int64, models.OrderFilter) ([]models.POSOrder, error)
+	Detail(context.Context, int64, int64) (models.POSOrder, error)
 }
 
 // ProjectExistenceStore is the minimal project read needed to derive an
@@ -74,7 +74,7 @@ func (service *OrderService) List(ctx context.Context, projectID int64, query Or
 // Export returns every order matching the filter, in the requested sort
 // order, unpaginated, for the Excel export. It uses the same filter and sort
 // rules as List.
-func (service *OrderService) Export(ctx context.Context, projectID int64, query OrderListQuery) ([]models.Order, error) {
+func (service *OrderService) Export(ctx context.Context, projectID int64, query OrderListQuery) ([]models.POSOrder, error) {
 	if projectID <= 0 {
 		return nil, ErrInvalidProjectID
 	}
@@ -92,16 +92,16 @@ func (service *OrderService) Export(ctx context.Context, projectID int64, query 
 }
 
 // Detail returns one immutable order, scoped to its project.
-func (service *OrderService) Detail(ctx context.Context, projectID, orderID int64) (models.Order, error) {
+func (service *OrderService) Detail(ctx context.Context, projectID, orderID int64) (models.POSOrder, error) {
 	if projectID <= 0 {
-		return models.Order{}, ErrInvalidProjectID
+		return models.POSOrder{}, ErrInvalidProjectID
 	}
 	if orderID <= 0 {
-		return models.Order{}, ErrInvalidOrderID
+		return models.POSOrder{}, ErrInvalidOrderID
 	}
 	order, err := service.orders.Detail(ctx, projectID, orderID)
 	if err != nil {
-		return models.Order{}, fmt.Errorf("get order: %w", err)
+		return models.POSOrder{}, fmt.Errorf("get order: %w", err)
 	}
 	return order, nil
 }
@@ -128,8 +128,8 @@ func (service *OrderService) buildFilter(ctx context.Context, projectID int64, q
 	}
 
 	if trimmed := strings.TrimSpace(query.PaymentMethod); trimmed != "" {
-		method, err := models.ParseOrderPaymentMethod(trimmed)
-		if err != nil {
+		method := models.POSPaymentMethod(trimmed)
+		if !method.Valid() {
 			return models.OrderFilter{}, ProjectValidationError{Message: "Invalid payment method filter"}
 		}
 		filter.PaymentMethod = method

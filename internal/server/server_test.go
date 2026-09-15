@@ -191,12 +191,12 @@ func (stub *serverOrderServiceStub) List(context.Context, int64, usecases.OrderL
 	return models.OrderListResponse{}, nil
 }
 
-func (*serverOrderServiceStub) Export(context.Context, int64, usecases.OrderListQuery) ([]models.Order, error) {
+func (*serverOrderServiceStub) Export(context.Context, int64, usecases.OrderListQuery) ([]models.POSOrder, error) {
 	return nil, nil
 }
 
-func (*serverOrderServiceStub) Detail(context.Context, int64, int64) (models.Order, error) {
-	return models.Order{}, nil
+func (*serverOrderServiceStub) Detail(context.Context, int64, int64) (models.POSOrder, error) {
+	return models.POSOrder{}, nil
 }
 
 type serverPaymentSlipServiceStub struct{ calls int }

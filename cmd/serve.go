@@ -65,7 +65,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	projectService := usecases.NewProjectService(projects)
 	projectHandler := handlers.NewProjectHandler(projectService)
 
-	orders := repositories.NewOrderRepository(pool, cfg.Storage.Bucket)
+	orders := repositories.NewOrderRepository(pool)
 	orderService := usecases.NewOrderService(orders, projects)
 	orderHandler := handlers.NewOrderHandler(orderService)
 

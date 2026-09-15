@@ -19,20 +19,20 @@ type orderStoreStub struct {
 	detailErr error
 }
 
-func (stub *orderStoreStub) List(_ context.Context, _ int64, filter models.OrderFilter, offset, limit int32) ([]models.Order, int64, error) {
+func (stub *orderStoreStub) List(_ context.Context, _ int64, filter models.OrderFilter, offset, limit int32) ([]models.POSOrder, int64, error) {
 	stub.filter = filter
 	stub.offset = offset
 	stub.limit = limit
-	return []models.Order{}, stub.total, stub.listErr
+	return []models.POSOrder{}, stub.total, stub.listErr
 }
 
-func (stub *orderStoreStub) Export(_ context.Context, _ int64, filter models.OrderFilter) ([]models.Order, error) {
+func (stub *orderStoreStub) Export(_ context.Context, _ int64, filter models.OrderFilter) ([]models.POSOrder, error) {
 	stub.filter = filter
-	return []models.Order{}, stub.exportErr
+	return []models.POSOrder{}, stub.exportErr
 }
 
-func (stub *orderStoreStub) Detail(context.Context, int64, int64) (models.Order, error) {
-	return models.Order{}, stub.detailErr
+func (stub *orderStoreStub) Detail(context.Context, int64, int64) (models.POSOrder, error) {
+	return models.POSOrder{}, stub.detailErr
 }
 
 type projectExistenceStoreStub struct {
@@ -159,7 +159,7 @@ func TestOrderServiceExportUsesSameFilterAsList(t *testing.T) {
 	if _, err := service.Export(context.Background(), 1, query); err != nil {
 		t.Fatal(err)
 	}
-	if store.filter.PaymentMethod != models.OrderPaymentMethodQR {
+	if store.filter.PaymentMethod != models.POSPaymentQRCode {
 		t.Fatalf("payment method filter = %s", store.filter.PaymentMethod)
 	}
 	if store.filter.SortBy != models.OrderSortByNetTotal || store.filter.SortOrder != models.OrderSortAsc {

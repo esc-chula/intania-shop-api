@@ -5,6 +5,7 @@ package repositories
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,21 +14,19 @@ import (
 )
 
 type orderIntegrationFixture struct {
-	ProjectID  int64
-	ProductID  int64
-	StaffID    int64
-	StockTxID  int64
-	OrderOneID int64
-	OrderTwoID int64
+	ProjectID      int64
+	OtherProjectID int64
+	StaffID        int64
+	OrderOneID     int64
+	OrderTwoID     int64
 }
 
 func TestOrderRepositoryListFiltersSortsAndPaginates(t *testing.T) {
 	database := openPromotionIntegrationDatabase(t)
 	fixture := newOrderIntegrationFixture(t, database)
-	ctx := context.Background()
-	repository := NewOrderRepository(database, "test-bucket")
+	repository := NewOrderRepository(database)
 
-	orders, total, err := repository.List(ctx, fixture.ProjectID, models.OrderFilter{
+	orders, total, err := repository.List(context.Background(), fixture.ProjectID, models.OrderFilter{
 		SortBy: models.OrderSortByOrderNumber, SortOrder: models.OrderSortAsc,
 		CreatedFrom: time.Now().Add(-24 * time.Hour), CreatedTo: time.Now().Add(24 * time.Hour),
 	}, 0, 10)
@@ -40,15 +39,15 @@ func TestOrderRepositoryListFiltersSortsAndPaginates(t *testing.T) {
 	if orders[0].OrderID != fixture.OrderOneID || orders[1].OrderID != fixture.OrderTwoID {
 		t.Fatalf("orders not sorted by order_number asc: %+v", orders)
 	}
-	if len(orders[0].Items) != 1 {
-		t.Fatalf("order one items = %d, want 1", len(orders[0].Items))
+	if len(orders[0].Items) != 2 {
+		t.Fatalf("order one items = %d, want 2", len(orders[0].Items))
 	}
 	if orders[1].AppliedPromotion == nil || orders[1].AppliedPromotion.Name != "Bundle" {
 		t.Fatalf("order two promotion snapshot = %+v", orders[1].AppliedPromotion)
 	}
 
-	filtered, filteredTotal, err := repository.List(ctx, fixture.ProjectID, models.OrderFilter{
-		PaymentMethod: models.OrderPaymentMethodQR,
+	filtered, filteredTotal, err := repository.List(context.Background(), fixture.ProjectID, models.OrderFilter{
+		PaymentMethod: models.POSPaymentQRCode,
 		SortBy:        models.OrderSortByOrderNumber, SortOrder: models.OrderSortAsc,
 		CreatedFrom: time.Now().Add(-24 * time.Hour), CreatedTo: time.Now().Add(24 * time.Hour),
 	}, 0, 10)
@@ -59,7 +58,7 @@ func TestOrderRepositoryListFiltersSortsAndPaginates(t *testing.T) {
 		t.Fatalf("payment method filter = %+v (total %d)", filtered, filteredTotal)
 	}
 
-	page, pageTotal, err := repository.List(ctx, fixture.ProjectID, models.OrderFilter{
+	page, pageTotal, err := repository.List(context.Background(), fixture.ProjectID, models.OrderFilter{
 		SortBy: models.OrderSortByOrderNumber, SortOrder: models.OrderSortAsc,
 		CreatedFrom: time.Now().Add(-24 * time.Hour), CreatedTo: time.Now().Add(24 * time.Hour),
 	}, 1, 1)
@@ -74,41 +73,33 @@ func TestOrderRepositoryListFiltersSortsAndPaginates(t *testing.T) {
 func TestOrderRepositoryDetailIsScopedToProject(t *testing.T) {
 	database := openPromotionIntegrationDatabase(t)
 	fixture := newOrderIntegrationFixture(t, database)
-	otherProjectID := insertPromotionProject(t, database, "Other order project", "2026-01-01", "2026-01-02")
-	t.Cleanup(func() {
-		if _, err := database.Exec(context.Background(), `DELETE FROM projects WHERE project_id = $1`, otherProjectID); err != nil {
-			t.Errorf("cleanup other project: %v", err)
-		}
-	})
-	ctx := context.Background()
-	repository := NewOrderRepository(database, "test-bucket")
+	repository := NewOrderRepository(database)
 
-	order, err := repository.Detail(ctx, fixture.ProjectID, fixture.OrderOneID)
+	order, err := repository.Detail(context.Background(), fixture.ProjectID, fixture.OrderOneID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if order.OrderID != fixture.OrderOneID || len(order.Items) != 1 {
+	if order.OrderID != fixture.OrderOneID || len(order.Items) != 2 {
 		t.Fatalf("order detail = %+v", order)
 	}
 	if order.Staff.StaffID != fixture.StaffID {
 		t.Fatalf("staff snapshot = %+v", order.Staff)
 	}
 
-	if _, err := repository.Detail(ctx, otherProjectID, fixture.OrderOneID); !errors.Is(err, ErrOrderNotFound) {
+	if _, err := repository.Detail(context.Background(), fixture.OtherProjectID, fixture.OrderOneID); !errors.Is(err, ErrOrderNotFound) {
 		t.Fatalf("cross-project detail err = %v, want ErrOrderNotFound", err)
 	}
-	if _, err := repository.Detail(ctx, fixture.ProjectID, 9223372036854770000); !errors.Is(err, ErrOrderNotFound) {
+	if _, err := repository.Detail(context.Background(), fixture.ProjectID, 9223372036854770000); !errors.Is(err, ErrOrderNotFound) {
 		t.Fatalf("missing order err = %v, want ErrOrderNotFound", err)
 	}
 }
 
-func TestOrderRepositoryExportReturnsOneRowPerItemUnpaginated(t *testing.T) {
+func TestOrderRepositoryExportReturnsAllItemsUnpaginated(t *testing.T) {
 	database := openPromotionIntegrationDatabase(t)
 	fixture := newOrderIntegrationFixture(t, database)
-	ctx := context.Background()
-	repository := NewOrderRepository(database, "test-bucket")
+	repository := NewOrderRepository(database)
 
-	orders, err := repository.Export(ctx, fixture.ProjectID, models.OrderFilter{
+	orders, err := repository.Export(context.Background(), fixture.ProjectID, models.OrderFilter{
 		SortBy: models.OrderSortByOrderNumber, SortOrder: models.OrderSortAsc,
 		CreatedFrom: time.Now().Add(-24 * time.Hour), CreatedTo: time.Now().Add(24 * time.Hour),
 	})
@@ -122,8 +113,8 @@ func TestOrderRepositoryExportReturnsOneRowPerItemUnpaginated(t *testing.T) {
 	for _, order := range orders {
 		totalItems += len(order.Items)
 	}
-	if totalItems != 2 {
-		t.Fatalf("exported items = %d, want 2", totalItems)
+	if totalItems != 4 {
+		t.Fatalf("exported items = %d, want 4", totalItems)
 	}
 }
 
@@ -165,94 +156,61 @@ func strPtr(value string) *string { return &value }
 
 func newOrderIntegrationFixture(t *testing.T, database *pgxpool.Pool) orderIntegrationFixture {
 	t.Helper()
-	ctx := context.Background()
+	base := newPromotionIntegrationFixture(t, database)
+	staffID := insertCheckoutStaff(t, database)
+	setCheckoutStock(t, database, base, 10, 10, 10)
 
-	projectID := insertPromotionProject(t, database, "Order history project", "2026-01-01", "2026-12-31")
-	productID := insertPromotionProduct(t, database, "Order history product", "100.00")
-
-	var staffID int64
-	if err := database.QueryRow(ctx, `
-		INSERT INTO users (full_name, email, role) VALUES ('Staff One', 'staff-one@example.com', 'ADMIN')
-		RETURNING user_id`).Scan(&staffID); err != nil {
-		t.Fatalf("insert staff fixture: %v", err)
+	checkout := NewPOSRepository(database)
+	slip := models.PaymentSlip{
+		ObjectKey:   fmt.Sprintf("payment-slips/order-history-%d.png", time.Now().UnixNano()),
+		URL:         "https://storage.googleapis.com/test-bucket/order-history.png",
+		ContentType: "image/png",
+		Size:        2048,
+	}
+	if err := checkout.RecordPaymentSlip(context.Background(), slip, staffID); err != nil {
+		t.Fatalf("record payment slip: %v", err)
 	}
 
-	var stockTxID int64
-	if err := database.QueryRow(ctx, `
-		INSERT INTO stock_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after)
-		VALUES ($1, 'ORDER', -1, 10, 9)
-		RETURNING transaction_id`, productID).Scan(&stockTxID); err != nil {
-		t.Fatalf("insert stock transaction fixture: %v", err)
+	firstCommand := qrCheckoutCommand(t, base, staffID,
+		fmt.Sprintf("order-history-qr-%d", time.Now().UnixNano()), slip.ObjectKey)
+	first, _, err := checkout.Checkout(context.Background(), base.Today, firstCommand,
+		checkoutPlanner(t, firstCommand, nil))
+	if err != nil {
+		t.Fatalf("create QR order fixture: %v", err)
 	}
 
-	var orderOneID int64
-	if err := database.QueryRow(ctx, `
-		INSERT INTO orders (project_id, order_number, staff_id, staff_full_name, staff_email,
-			buyer_gender, buyer_age, buyer_student_alumni_year,
-			payment_method, subtotal, discount, net_total)
-		VALUES ($1, 'ORD-0001', $2, 'Staff One', 'staff-one@example.com',
-			'FEMALE', 21, 'Intania 105',
-			'QR_CODE', '100.00', '0.00', '100.00')
-		RETURNING order_id`, projectID, staffID).Scan(&orderOneID); err != nil {
-		t.Fatalf("insert order one fixture: %v", err)
-	}
-	if _, err := database.Exec(ctx, `
-		INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total, inventory_transaction_id)
-		VALUES ($1, $2, 'Order history product', 1, '100.00', '100.00', $3)`,
-		orderOneID, productID, stockTxID); err != nil {
-		t.Fatalf("insert order one item fixture: %v", err)
-	}
-
-	var orderTwoID int64
-	if err := database.QueryRow(ctx, `
-		INSERT INTO orders (project_id, order_number, staff_id, staff_full_name, staff_email,
-			buyer_gender, payment_method, payment_received_amount, payment_change_amount, payment_no_change,
-			subtotal, discount, net_total,
-			promotion_id, promotion_name, promotion_original_bundle_price, promotion_price, promotion_discount)
-		VALUES ($1, 'ORD-0002', $2, 'Staff One', 'staff-one@example.com',
-			'MALE', 'REAL_MONEY', '200.00', '0.00', true,
-			'100.00', '20.00', '80.00',
-			1, 'Bundle', '100.00', '80.00', '20.00')
-		RETURNING order_id`, projectID, staffID).Scan(&orderTwoID); err != nil {
-		t.Fatalf("insert order two fixture: %v", err)
-	}
-	if _, err := database.Exec(ctx, `
-		INSERT INTO order_items (order_id, product_id, product_name, quantity, unit_price, line_total, inventory_transaction_id)
-		VALUES ($1, $2, 'Order history product', 1, '100.00', '100.00', $3)`,
-		orderTwoID, productID, stockTxID); err != nil {
-		t.Fatalf("insert order two item fixture: %v", err)
-	}
-
-	fixture := orderIntegrationFixture{
-		ProjectID: projectID, ProductID: productID, StaffID: staffID, StockTxID: stockTxID,
-		OrderOneID: orderOneID, OrderTwoID: orderTwoID,
-	}
-
-	t.Cleanup(func() {
-		cleanupOrderIntegrationFixture(t, database, fixture)
+	promotionRepository := NewPromotionRepository(database)
+	promotion, err := promotionRepository.Create(context.Background(), base.Today, base.ProjectID, models.ProjectPromotionMutation{
+		Name:           "Bundle",
+		PromotionPrice: mustPromotionAmount(t, "150.00"),
+		Items: []models.ProjectPromotionItemInput{
+			{ProductID: base.ProductAID, Quantity: 1},
+			{ProductID: base.ProductBID, VariantID: &base.VariantOneID, Quantity: 2},
+		},
 	})
-	return fixture
-}
+	if err != nil {
+		t.Fatalf("create promotion fixture: %v", err)
+	}
+	applied := &models.AppliedProjectPromotion{
+		PromotionID:         promotion.PromotionID,
+		Name:                promotion.Name,
+		OriginalBundlePrice: mustPromotionAmount(t, "180.00"),
+		PromotionPrice:      mustPromotionAmount(t, "150.00"),
+		Discount:            mustPromotionAmount(t, "30.00"),
+	}
+	secondCommand := cashCheckoutCommand(t, base, staffID,
+		fmt.Sprintf("order-history-cash-%d", time.Now().UnixNano()), "200.00", true)
+	second, _, err := checkout.Checkout(context.Background(), base.Today, secondCommand,
+		checkoutPlanner(t, secondCommand, applied))
+	if err != nil {
+		t.Fatalf("create promoted cash order fixture: %v", err)
+	}
 
-func cleanupOrderIntegrationFixture(t *testing.T, database *pgxpool.Pool, fixture orderIntegrationFixture) {
-	t.Helper()
-	ctx := context.Background()
-	if _, err := database.Exec(ctx, `DELETE FROM order_items WHERE order_id IN ($1, $2)`, fixture.OrderOneID, fixture.OrderTwoID); err != nil {
-		t.Errorf("cleanup order items: %v", err)
-	}
-	if _, err := database.Exec(ctx, `DELETE FROM orders WHERE order_id IN ($1, $2)`, fixture.OrderOneID, fixture.OrderTwoID); err != nil {
-		t.Errorf("cleanup orders: %v", err)
-	}
-	if _, err := database.Exec(ctx, `DELETE FROM stock_transactions WHERE transaction_id = $1`, fixture.StockTxID); err != nil {
-		t.Errorf("cleanup stock transaction: %v", err)
-	}
-	if _, err := database.Exec(ctx, `DELETE FROM users WHERE user_id = $1`, fixture.StaffID); err != nil {
-		t.Errorf("cleanup staff: %v", err)
-	}
-	if _, err := database.Exec(ctx, `DELETE FROM products WHERE id = $1`, fixture.ProductID); err != nil {
-		t.Errorf("cleanup product: %v", err)
-	}
-	if _, err := database.Exec(ctx, `DELETE FROM projects WHERE project_id = $1`, fixture.ProjectID); err != nil {
-		t.Errorf("cleanup project: %v", err)
+	return orderIntegrationFixture{
+		ProjectID:      base.ProjectID,
+		OtherProjectID: base.OtherProjectID,
+		StaffID:        staffID,
+		OrderOneID:     first.OrderID,
+		OrderTwoID:     second.OrderID,
 	}
 }
