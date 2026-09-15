@@ -227,6 +227,12 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorNotActive, "Project is not active")
 	case errors.Is(err, repositories.ErrProductNotSellable):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorProductNotSellable, "Product is not sellable in project")
+	case errors.Is(err, repositories.ErrPaymentSlipNotTrusted):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorInvalidPaymentSlip,
+			"Payment slip is not a trusted upload or already backs another order")
+	case errors.Is(err, repositories.ErrIdempotencyKeyReused):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorIdempotencyKeyReused,
+			"Idempotency-Key was already used for a different request")
 	case errors.Is(err, repositories.ErrProjectHasOrders):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorHasOrders,
 			"Project has orders and cannot be deleted")

@@ -37,14 +37,18 @@ func TestCleanBaselineUpAndDown(t *testing.T) {
 		SELECT tablename FROM pg_tables
 		WHERE schemaname='public' AND tablename <> 'goose_db_version'
 		ORDER BY tablename`, []string{
-		"orders", "products", "project_products", "projects", "promotion_items", "promotions",
+		"order_items", "order_payments", "order_promotions", "orders", "payment_slips",
+		"products", "project_products", "projects", "promotion_items", "promotions",
 		"stock_transactions", "users", "variants",
 	})
 	assertNames(t, database, `
 		SELECT t.typname FROM pg_type t
 		JOIN pg_namespace n ON n.oid=t.typnamespace
 		WHERE n.nspname='public' AND t.typtype='e'
-		ORDER BY t.typname`, []string{"product_status", "product_type", "stock_transaction_type", "user_role"})
+		ORDER BY t.typname`, []string{
+		"pos_buyer_gender", "pos_order_status", "pos_payment_method",
+		"product_status", "product_type", "stock_transaction_type", "user_role",
+	})
 
 	migrationFS, err := fs.Sub(files, "sql")
 	if err != nil {
