@@ -222,8 +222,26 @@ const orderOutsideDateRangeQuery = `SELECT EXISTS (
 // Bangkok calendar date, since that would make order history inconsistent
 // with the project's own reported sale period.
 func (repository *ProjectRepository) Update(ctx context.Context, today models.Date, projectID int64, input models.ProjectInput) (models.Project, error) {
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return models.Project{}, fmt.Errorf("begin project update: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	var lockedProjectID int64
+	if err := tx.QueryRow(ctx, `
+		SELECT project_id
+		FROM projects
+		WHERE project_id = $1
+		FOR UPDATE`, projectID).Scan(&lockedProjectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Project{}, ErrProjectNotFound
+		}
+		return models.Project{}, fmt.Errorf("lock project for update: %w", err)
+	}
+
 	var conflict bool
-	if err := repository.pool.QueryRow(ctx, orderOutsideDateRangeQuery,
+	if err := tx.QueryRow(ctx, orderOutsideDateRangeQuery,
 		projectID, input.StartDate.Time, input.EndDate.Time).Scan(&conflict); err != nil {
 		return models.Project{}, fmt.Errorf("check project order dates: %w", err)
 	}
@@ -231,13 +249,12 @@ func (repository *ProjectRepository) Update(ctx context.Context, today models.Da
 		return models.Project{}, ErrProjectSaleDatesConflict
 	}
 
-	tag, err := repository.pool.Exec(ctx, updateProjectQuery,
-		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time)
-	if err != nil {
+	if _, err := tx.Exec(ctx, updateProjectQuery,
+		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time); err != nil {
 		return models.Project{}, fmt.Errorf("update project: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return models.Project{}, ErrProjectNotFound
+	if err := tx.Commit(ctx); err != nil {
+		return models.Project{}, fmt.Errorf("commit project update: %w", err)
 	}
 	return repository.Detail(ctx, today, projectID)
 }
