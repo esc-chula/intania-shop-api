@@ -203,15 +203,58 @@ func (repository *ProjectRepository) Create(ctx context.Context, today models.Da
 	return repository.Detail(ctx, today, projectID)
 }
 
+// ErrProjectSaleDatesConflict reports a start/end date change that would
+// exclude an order the project already has, making order history
+// inconsistent with the project's own sale period.
+var ErrProjectSaleDatesConflict = errors.New("project sale dates conflict with existing orders")
+
+// orderOutsideDateRangeQuery checks Bangkok calendar dates, matching how the
+// project status and order history default range are derived elsewhere.
+const orderOutsideDateRangeQuery = `SELECT EXISTS (
+	SELECT 1 FROM orders
+	WHERE project_id = $1
+	  AND ((created_at AT TIME ZONE 'Asia/Bangkok')::date < $2::date
+	   OR  (created_at AT TIME ZONE 'Asia/Bangkok')::date > $3::date)
+)`
+
 // Update replaces the editable columns of an existing project and reads it back.
+// A project with orders cannot have its sale dates narrowed past any order's
+// Bangkok calendar date, since that would make order history inconsistent
+// with the project's own reported sale period.
 func (repository *ProjectRepository) Update(ctx context.Context, today models.Date, projectID int64, input models.ProjectInput) (models.Project, error) {
-	tag, err := repository.pool.Exec(ctx, updateProjectQuery,
-		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time)
+	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
+		return models.Project{}, fmt.Errorf("begin project update: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	var lockedProjectID int64
+	if err := tx.QueryRow(ctx, `
+		SELECT project_id
+		FROM projects
+		WHERE project_id = $1
+		FOR UPDATE`, projectID).Scan(&lockedProjectID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Project{}, ErrProjectNotFound
+		}
+		return models.Project{}, fmt.Errorf("lock project for update: %w", err)
+	}
+
+	var conflict bool
+	if err := tx.QueryRow(ctx, orderOutsideDateRangeQuery,
+		projectID, input.StartDate.Time, input.EndDate.Time).Scan(&conflict); err != nil {
+		return models.Project{}, fmt.Errorf("check project order dates: %w", err)
+	}
+	if conflict {
+		return models.Project{}, ErrProjectSaleDatesConflict
+	}
+
+	if _, err := tx.Exec(ctx, updateProjectQuery,
+		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time); err != nil {
 		return models.Project{}, fmt.Errorf("update project: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return models.Project{}, ErrProjectNotFound
+	if err := tx.Commit(ctx); err != nil {
+		return models.Project{}, fmt.Errorf("commit project update: %w", err)
 	}
 	return repository.Detail(ctx, today, projectID)
 }

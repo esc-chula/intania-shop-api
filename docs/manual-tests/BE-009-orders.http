@@ -1,0 +1,149 @@
+@baseUrl = http://localhost:8080
+@token = replace-with-admin-jwt
+@userToken = replace-with-user-jwt
+@projectId = 1
+@otherProjectId = 2
+@missingProjectId = 9223372036854770000
+@orderOneId = 1
+@orderTwoId = 2
+@missingOrderId = 9223372036854770000
+@staffId = 1
+@checkoutProductId = 1
+
+# Preconditions: projectId is ACTIVE, checkoutProductId is a selected
+# variantless Project Product with at least two units in stock, and token is an
+# ADMIN JWT. Copy data.order_id from these responses into orderOneId/orderTwoId.
+
+### Create the first order through BE-008 checkout
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{token}}
+Idempotency-Key: be009-history-order-1
+Content-Type: application/json
+
+{"buyer":{"gender":"FEMALE","age":21,"student_alumni_year":"Intania 105"},"items":[{"product_id":{{checkoutProductId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"1000000.00","no_change":true,"note":"BE-009 history test"}}
+
+### Create a second order for sorting and pagination
+# Configure an eligible Promotion first when promotion-snapshot coverage is required.
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{token}}
+Idempotency-Key: be009-history-order-2
+Content-Type: application/json
+
+{"buyer":{"gender":"MALE","age":22,"student_alumni_year":null},"items":[{"product_id":{{checkoutProductId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"1000000.00","no_change":true,"note":"BE-009 history test 2"}}
+
+### List orders with the default Bangkok date range (project start 00:00 to now)
+GET {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{token}}
+
+### List orders with an explicit created_from/created_to range
+GET {{baseUrl}}/projects/{{projectId}}/orders?created_from=2026-01-01T00:00:00%2B07:00&created_to=2026-12-31T23:59:59%2B07:00
+Authorization: Bearer {{token}}
+
+### Filter by order_number (partial match)
+GET {{baseUrl}}/projects/{{projectId}}/orders?order_number=ORD-0001
+Authorization: Bearer {{token}}
+
+### Filter by payment_method
+GET {{baseUrl}}/projects/{{projectId}}/orders?payment_method=QR_CODE
+Authorization: Bearer {{token}}
+
+### Filter by staff_id
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id={{staffId}}
+Authorization: Bearer {{token}}
+
+### Accept a positive int64 staff_id larger than int32
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=2147483648
+Authorization: Bearer {{token}}
+
+### Reject non-numeric staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=abc
+Authorization: Bearer {{token}}
+
+### Reject blank staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=
+Authorization: Bearer {{token}}
+
+### Reject zero staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=0
+Authorization: Bearer {{token}}
+
+### Reject negative staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=-1
+Authorization: Bearer {{token}}
+
+### Reject staff_id above int64 range (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=9223372036854775808
+Authorization: Bearer {{token}}
+
+### Reject repeated staff_id (400 VALIDATION_ERROR: Invalid staff_id)
+GET {{baseUrl}}/projects/{{projectId}}/orders?staff_id=1&staff_id=2
+Authorization: Bearer {{token}}
+
+### Repeat the staff_id contract checks against export
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=2147483648
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=abc
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=0
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=-1
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=9223372036854775808
+Authorization: Bearer {{token}}
+
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?staff_id=1&staff_id=2
+Authorization: Bearer {{token}}
+
+### Sort by net_total ascending, with a stable order_id tie-break
+GET {{baseUrl}}/projects/{{projectId}}/orders?sort_by=net_total&sort_order=asc
+Authorization: Bearer {{token}}
+
+### Paginate: page 2, page_size 1
+GET {{baseUrl}}/projects/{{projectId}}/orders?page=2&page_size=1
+Authorization: Bearer {{token}}
+
+### Get immutable order detail: item, staff, buyer, payment, and promotion snapshots
+GET {{baseUrl}}/projects/{{projectId}}/orders/{{orderOneId}}
+Authorization: Bearer {{token}}
+
+### Order belongs to a different project (404 ORDER_NOT_FOUND)
+GET {{baseUrl}}/projects/{{otherProjectId}}/orders/{{orderOneId}}
+Authorization: Bearer {{token}}
+
+### Order does not exist (404 ORDER_NOT_FOUND)
+GET {{baseUrl}}/projects/{{projectId}}/orders/{{missingOrderId}}
+Authorization: Bearer {{token}}
+
+### Missing project (404 PROJECT_NOT_FOUND)
+GET {{baseUrl}}/projects/{{missingProjectId}}/orders
+Authorization: Bearer {{token}}
+
+### Export filtered order history as Excel, using the same filters/sorting as list
+GET {{baseUrl}}/projects/{{projectId}}/orders/export?payment_method=QR_CODE&sort_by=net_total&sort_order=asc
+Authorization: Bearer {{token}}
+
+### Project lifecycle guard: narrowing sale dates past an existing order is rejected (409 PROJECT_CONFLICT)
+# Use dates that would exclude orderOneId's created_at Bangkok calendar date.
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name":"Narrowed project","start_date":"2099-01-01","end_date":"2099-01-02"}
+
+### Project lifecycle guard: a project with orders cannot be deleted (409 PROJECT_HAS_ORDERS)
+DELETE {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{token}}
+
+### Authorization: omit the bearer token (401)
+GET {{baseUrl}}/projects/{{projectId}}/orders
+
+### Authorization: an authenticated USER token is forbidden (403)
+GET {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{userToken}}

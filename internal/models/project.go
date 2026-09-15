@@ -53,6 +53,12 @@ func TodayInBangkok(now time.Time) Date {
 	return NewDate(now.In(bangkok))
 }
 
+// StartOfBangkokDay returns the instant 00:00:00 Asia/Bangkok on date.
+func StartOfBangkokDay(date Date) time.Time {
+	year, month, day := date.Date()
+	return time.Date(year, month, day, 0, 0, 0, 0, bangkok)
+}
+
 // ParseProjectStatus converts a client-supplied status filter value.
 func ParseProjectStatus(value string) (ProjectStatus, error) {
 	switch ProjectStatus(value) {

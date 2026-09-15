@@ -1,10 +1,10 @@
 # Intania Shop API
 
-Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, and POS catalogue, quotation, and paid checkout. The previous customer storefront domains have been removed. POS order history, order detail, and reporting remain planned.
+Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, POS catalogue/quotation/paid checkout, and Project order history APIs (list, detail, export). The previous customer storefront domains have been removed.
 
 ## Current scope
 
-The server currently implements the service, authentication, catalogue, inventory, upload, Project, Promotion, and POS routes documented below:
+The server currently implements the service, authentication, catalogue, inventory, upload, Project, Promotion, POS, and order history routes documented below:
 
 - 4 service and documentation routes
 - 3 Google OAuth routes
@@ -14,10 +14,11 @@ The server currently implements the service, authentication, catalogue, inventor
 - 8 Project and project-product routes
 - 5 Promotion routes
 - 3 POS catalogue, quotation, and checkout routes
+- 3 Project order history routes (list, detail, Excel export)
 
-All catalogue, inventory, and upload operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
+All catalogue, inventory, upload, Project, Promotion (admin), POS, and order history operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
 
-The interactive `/docs` page shows the implemented Project, Promotion, and POS operations alongside the planned order history, order detail, and reporting operations. Only operations explicitly described as planned are API contracts that are not registered by the current server.
+The interactive `/docs` page shows the implemented Project, Promotion, POS, and order history operations. Only operations explicitly tagged `PLANNED` are API contracts that are not registered by the current server.
 
 ## Technology
 
@@ -162,11 +163,25 @@ All three endpoints require an `ADMIN` bearer token. The catalogue is available 
 - `REAL_MONEY` payments must cover the server-calculated `net_total`. When `no_change` is true, any excess is retained rather than returned as change.
 - Retrying with the same `Idempotency-Key` and the same payload returns the stored order with `Idempotency-Replayed: true` and `200`, without reducing stock again. The same key with a different payload is rejected with `IDEMPOTENCY_KEY_REUSED`.
 
+### Admin Project order history
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/projects/{project_id}/orders` | List Project POS orders with filtering, sorting, and pagination |
+| `GET` | `/projects/{project_id}/orders/{order_id}` | Get one immutable order, with its item, buyer, staff, payment, and applied-promotion snapshots |
+| `GET` | `/projects/{project_id}/orders/export` | Export the filtered, sorted order history as an Excel workbook, one row per order item |
+
+All three require an `ADMIN` bearer token. `order_number`, `payment_method`, `staff_id`, `created_from`, and `created_to` filter the list before pagination; `sort_by` (`order_number` or `net_total`) and `sort_order` always carry a fixed `order_id` tie-break, so paging never reorders across pages. `created_from`/`created_to` default to 00:00 `Asia/Bangkok` on the Project's start date through the current time. Export uses the same filters and sort as the list, without pagination.
+
+Every returned order reads the buyer, staff, payment, item, and applied-promotion data recorded at checkout; it is never rejoined against the current Product, User, or Promotion tables, so later edits to any of those never change order history. A Project that has orders cannot be deleted, and its sale dates cannot be changed to exclude an existing order's date (`409 PROJECT_CONFLICT`).
+
+Order history reads immutable snapshots created by checkout; manual request coverage is documented in [`docs/manual-tests/BE-009-orders.http`](docs/manual-tests/BE-009-orders.http).
+
 ## Documentation
 
 - [`docs/openapi.yaml`](docs/openapi.yaml) is the single machine-readable source of truth.
 - [`docs/project-pos-api-contract.md`](docs/project-pos-api-contract.md) is reserved for the review companion to the Project/POS contract.
-- `/docs` renders implemented Project/POS operations alongside the planned order history, detail, and reporting operations.
+- `/docs` renders implemented Project/POS and order history operations.
 
 ## Responses
 

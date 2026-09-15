@@ -216,6 +216,8 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Project name filter is too long")
 	case errors.Is(err, usecases.ErrInvalidProjectID):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid project ID")
+	case errors.Is(err, usecases.ErrInvalidOrderID):
+		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid order ID")
 	case errors.Is(err, usecases.ErrInvalidPOSCart), errors.Is(err, repositories.ErrPOSDuplicateCartItem):
 		writeProjectError(writer, request, http.StatusBadRequest, models.ProjectErrorValidation, "Invalid POS Cart")
 	case errors.Is(err, models.ErrTHBAmountOverflow):
@@ -236,6 +238,11 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 	case errors.Is(err, repositories.ErrProjectHasOrders):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorHasOrders,
 			"Project has orders and cannot be deleted")
+	case errors.Is(err, repositories.ErrProjectSaleDatesConflict):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict,
+			"Project sale dates cannot exclude an existing order")
+	case errors.Is(err, repositories.ErrOrderNotFound):
+		writeProjectError(writer, request, http.StatusNotFound, models.ProjectErrorOrderNotFound, "Order not found")
 	case errors.Is(err, repositories.ErrProjectCompleted):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict, "Project product selection cannot be changed")
 	case errors.Is(err, repositories.ErrProjectProductPromotion):
