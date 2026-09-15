@@ -44,7 +44,12 @@ func (handler *OrderHandler) list(writer http.ResponseWriter, request *http.Requ
 	if !ok {
 		return
 	}
-	data, err := handler.orders.List(request.Context(), projectID, orderListQueryFromRequest(request),
+	orderQuery, err := orderListQueryFromRequest(request)
+	if err != nil {
+		writeProjectErrorResponse(writer, request, err, "Unable to list orders")
+		return
+	}
+	data, err := handler.orders.List(request.Context(), projectID, orderQuery,
 		queryInt(request, "page", 1), queryInt(request, "page_size", 10))
 	if err != nil {
 		writeProjectErrorResponse(writer, request, err, "Unable to list orders")
@@ -75,7 +80,12 @@ func (handler *OrderHandler) export(writer http.ResponseWriter, request *http.Re
 	if !ok {
 		return
 	}
-	orders, err := handler.orders.Export(request.Context(), projectID, orderListQueryFromRequest(request))
+	orderQuery, err := orderListQueryFromRequest(request)
+	if err != nil {
+		writeProjectErrorResponse(writer, request, err, "Unable to export orders")
+		return
+	}
+	orders, err := handler.orders.Export(request.Context(), projectID, orderQuery)
 	if err != nil {
 		writeProjectErrorResponse(writer, request, err, "Unable to export orders")
 		return
@@ -103,17 +113,31 @@ func orderPathID(writer http.ResponseWriter, request *http.Request) (int64, bool
 	return orderID, true
 }
 
-func orderListQueryFromRequest(request *http.Request) usecases.OrderListQuery {
+func orderListQueryFromRequest(request *http.Request) (usecases.OrderListQuery, error) {
 	query := request.URL.Query()
-	return usecases.OrderListQuery{
+	orderQuery := usecases.OrderListQuery{
 		OrderNumber:   query.Get("order_number"),
 		PaymentMethod: query.Get("payment_method"),
-		StaffID:       int64(queryInt(request, "staff_id", 0)),
 		CreatedFrom:   query.Get("created_from"),
 		CreatedTo:     query.Get("created_to"),
 		SortBy:        query.Get("sort_by"),
 		SortOrder:     query.Get("sort_order"),
 	}
+
+	staffIDs, supplied := query["staff_id"]
+	if !supplied {
+		return orderQuery, nil
+	}
+	if len(staffIDs) != 1 {
+		return usecases.OrderListQuery{}, usecases.ProjectValidationError{Message: "Invalid staff_id"}
+	}
+
+	staffID, err := strconv.ParseInt(staffIDs[0], 10, 64)
+	if err != nil || staffID < 1 {
+		return usecases.OrderListQuery{}, usecases.ProjectValidationError{Message: "Invalid staff_id"}
+	}
+	orderQuery.StaffID = staffID
+	return orderQuery, nil
 }
 
 // orderExportColumns are the export sheet columns, in order. One row is
