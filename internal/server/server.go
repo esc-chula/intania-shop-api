@@ -86,7 +86,7 @@ func NewHandler(dependencies Dependencies) http.Handler {
 			dependencies.OrderHandler.Register(admin)
 		}
 		if dependencies.PromotionHandler != nil {
-			dependencies.PromotionHandler.Register(authenticated)
+			dependencies.PromotionHandler.Register(admin)
 		}
 		if dependencies.PromotionAdminHandler != nil {
 			dependencies.PromotionAdminHandler.Register(admin)

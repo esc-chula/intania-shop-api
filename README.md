@@ -128,9 +128,9 @@ Payment slip uploads accept exactly one JPEG, PNG, or WebP image of at most 10 M
 
 | Method | Path | Authorization | Description |
 | --- | --- | --- | --- |
-| `GET` | `/projects/{project_id}/promotions` | Authenticated | List project Promotions with current item data and calculated totals |
+| `GET` | `/projects/{project_id}/promotions` | `ADMIN` | List project Promotions with current item data and calculated totals |
 | `POST` | `/projects/{project_id}/promotions` | `ADMIN` | Create a Promotion |
-| `GET` | `/projects/{project_id}/promotions/{promotion_id}` | Authenticated | Get one hydrated Promotion |
+| `GET` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Get one hydrated Promotion |
 | `PUT` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Replace the complete Promotion and item set atomically |
 | `DELETE` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Delete a Promotion |
 
