@@ -51,6 +51,28 @@ paths:
           content:
             text/plain:
               schema: { type: string, const: unavailable }
+  /openapi.yaml:
+    get:
+      operationId: getOpenAPIDocument
+      tags: [Service]
+      summary: Get the OpenAPI document
+      responses:
+        "200":
+          description: Canonical OpenAPI document
+          content:
+            application/yaml:
+              schema: { type: string }
+  /docs:
+    get:
+      operationId: getAPIReference
+      tags: [Service]
+      summary: Get the interactive API reference
+      responses:
+        "200":
+          description: Scalar API reference page
+          content:
+            text/html:
+              schema: { type: string }
   /auth/google:
     get:
       operationId: startGoogleOAuth
