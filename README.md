@@ -2,24 +2,6 @@
 
 Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, POS catalogue/quotation/paid checkout, and Project order history APIs (list, detail, export). The previous customer storefront domains have been removed.
 
-## Current scope
-
-The server currently implements the service, authentication, catalogue, inventory, upload, Project, Promotion, POS, and order history routes documented below:
-
-- 4 service and documentation routes
-- 3 Google OAuth routes
-- 9 product and variant routes
-- 4 inventory routes
-- 3 upload routes
-- 8 Project and project-product routes
-- 5 Promotion routes
-- 3 POS catalogue, quotation, and checkout routes
-- 3 Project order history routes (list, detail, Excel export)
-
-All catalogue, inventory, upload, Project, Promotion (admin), POS, and order history operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
-
-The interactive `/docs` page shows the implemented Project, Promotion, POS, and order history operations. Only operations explicitly tagged `PLANNED` are API contracts that are not registered by the current server.
-
 ## Technology
 
 - Go 1.26.5
