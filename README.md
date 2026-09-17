@@ -44,14 +44,7 @@ The server validates required configuration at startup. `make run`, `make migrat
 
 ## Clean database setup
 
-There is one clean baseline migration. It creates only:
-
-- `users`
-- `products`
-- `variants`
-- `stock_transactions`
-
-It also creates only `user_role`, `product_status`, `stock_transaction_type`, and `product_type` enums. Migration history from the storefront backend is intentionally unsupported.
+Migration history from the storefront backend is intentionally unsupported.
 
 Reset the local database before using this version:
 
