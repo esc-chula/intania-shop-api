@@ -44,6 +44,27 @@ make run
 
 For hot reload, use `make dev` after installing Air.
 
+## Local frontend seed data
+
+For a repeatable local catalogue and POS fixture, run this after migrations:
+
+```bash
+make seed
+```
+
+This command runs only against the Docker `db` service. It resets local
+catalogue, inventory, Project, Promotion, payment-slip, and POS-order data,
+but preserves OAuth `users`. Do not use it against production or any database
+whose shop data must be retained.
+
+The fixture creates an ACTIVE `Intania Music Fest 2026` Project, five themed
+products (including a Polo with M/L variants), positive initial stock and
+stock history, Project selling prices, and the `Swagged Out Set` Promotion.
+It deliberately has no product images, GCS objects, user accounts, or sample
+orders. It prepares consistent frontend demo data; use the Bruno release suite
+to exercise API routes, authorization failures, checkout rollback, and
+external GCS flows.
+
 ## Authentication
 
 Google OAuth is the only account creation and login flow. Open:
