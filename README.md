@@ -99,8 +99,8 @@ New accounts have the `USER` role unless promoted to `ADMIN`. Only administrator
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/products` | Paginated list; optionally include variants |
-| `GET` | `/products/search` | Paginated name search |
+| `GET` | `/products` | List products |
+| `GET` | `/products/search` | Search products |
 | `GET` | `/products/{id}` | Product detail |
 | `POST` | `/products` | Create product |
 | `PUT` | `/products/{id}` | Update product |
@@ -108,8 +108,6 @@ New accounts have the `USER` role unless promoted to `ADMIN`. Only administrator
 | `POST` | `/products/{id}/variants` | Create variant |
 | `PUT` | `/variants/{id}` | Update variant |
 | `DELETE` | `/variants/{id}` | Delete variant |
-
-The clean product model retains name, description, price, status, category, stock, images, product type, SKU, product code, timestamps, and variants.
 
 ### Admin inventory and uploads
 
@@ -123,60 +121,47 @@ The clean product model retains name, description, price, status, category, stoc
 | `POST` | `/stock/upload-proof-images` | Upload a stock confirmation image |
 | `POST` | `/upload/payment-slips` | Upload one trusted QR payment slip |
 
-Stock adjustments lock the affected row and persist the transaction atomically. Inventory records retain reason, notes, references, actor, and confirmation image. POS checkout writes the `ORDER` transaction type, referencing the order it belongs to.
-
-Payment slip uploads accept exactly one JPEG, PNG, or WebP image of at most 10 MiB in the `file` field. The content type is detected from the file itself, and the returned `object_key` is the only slip reference checkout accepts.
+Stock changes are atomic and recorded in inventory history. Payment slips accept one JPEG, PNG, or WebP image (up to 10 MiB); use the returned `object_key` for QR checkout.
 
 ### Project Promotions
 
 | Method | Path | Authorization | Description |
 | --- | --- | --- | --- |
-| `GET` | `/projects/{project_id}/promotions` | `ADMIN` | List project Promotions with current item data and calculated totals |
+| `GET` | `/projects/{project_id}/promotions` | `ADMIN` | List Promotions |
 | `POST` | `/projects/{project_id}/promotions` | `ADMIN` | Create a Promotion |
-| `GET` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Get one hydrated Promotion |
-| `PUT` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Replace the complete Promotion and item set atomically |
+| `GET` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Get Promotion |
+| `PUT` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Replace Promotion |
 | `DELETE` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Delete a Promotion |
 
-Promotion prices are fixed THB amounts represented as JSON strings with two decimal places. Responses recalculate `original_bundle_price` and `discount` from the current Project Product prices. POS quotations apply the eligible Promotion with the highest fixed-point discount, using the lowest `promotion_id` as the deterministic tie-breaker.
+Promotion amounts are two-decimal THB strings. Quotes apply the eligible Promotion with the highest discount.
 
 ### Admin POS catalogue and quotations
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/projects/{project_id}/pos` | Preview the selected Project catalogue with current stock and project prices |
-| `POST` | `/projects/{project_id}/checkout/quote` | Validate an ACTIVE-project Cart and calculate authoritative totals |
-| `POST` | `/projects/{project_id}/orders` | Create a paid order and reduce stock atomically |
+| `GET` | `/projects/{project_id}/pos` | View Project catalogue |
+| `POST` | `/projects/{project_id}/checkout/quote` | Quote a Cart |
+| `POST` | `/projects/{project_id}/orders` | Checkout and reduce stock |
 
-All three endpoints require an `ADMIN` bearer token. The catalogue is available for preview in every Project status; `can_checkout` is true only for an `ACTIVE` Project. Quote and checkout requests contain only product/variant identities and positive quantities. Prices, stock, Promotions, discounts, and totals are resolved on the server.
+All three require `ADMIN`. Catalogue preview works for every Project; quote and checkout require an `ACTIVE` Project and use server-calculated prices and stock.
 
 ### Atomic POS checkout
 
-`POST /projects/{project_id}/orders` requires an `Idempotency-Key` header and an `ACTIVE` Project. One transaction locks the Project and the stock rows of every requested item, revalidates the selection, prices, Promotions, and stock, then writes the order, its item, payment, and Promotion snapshots, and one `ORDER` stock transaction per line. Any rejection rolls the whole set back, so a failed checkout leaves no order, payment, snapshot, or stock change behind.
-
-- A quotation is a preview and reserves nothing; only checkout reduces stock.
-- Snapshots keep the name, variant text, image, and prices that applied at payment time, so later catalogue or Promotion edits never rewrite a paid order.
-- `QR_CODE` payments must reference a `slip_object_key` returned by `POST /upload/payment-slips`, and each slip can back only one order.
-- `REAL_MONEY` payments must cover the server-calculated `net_total`. When `no_change` is true, any excess is retained rather than returned as change.
-- Retrying with the same `Idempotency-Key` and the same payload returns the stored order with `Idempotency-Replayed: true` and `200`, without reducing stock again. The same key with a different payload is rejected with `IDEMPOTENCY_KEY_REUSED`.
+Checkout requires an `ACTIVE` Project and `Idempotency-Key`. It atomically validates stock, creates immutable order snapshots, records payment, and reduces stock; failed checkouts roll back. Quotes reserve nothing. QR checkout uses a previously uploaded slip, while cash must cover the server total. Retrying the same key and payload returns the original order without another stock reduction.
 
 ### Admin Project order history
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/projects/{project_id}/orders` | List Project POS orders with filtering, sorting, and pagination |
-| `GET` | `/projects/{project_id}/orders/{order_id}` | Get one immutable order, with its item, buyer, staff, payment, and applied-promotion snapshots |
-| `GET` | `/projects/{project_id}/orders/export` | Export the filtered, sorted order history as an Excel workbook, one row per order item |
+| `GET` | `/projects/{project_id}/orders` | List orders |
+| `GET` | `/projects/{project_id}/orders/{order_id}` | Get order detail |
+| `GET` | `/projects/{project_id}/orders/export` | Export orders as Excel |
 
-All three require an `ADMIN` bearer token. `order_number`, `payment_method`, `staff_id`, `created_from`, and `created_to` filter the list before pagination; `sort_by` (`order_number` or `net_total`) and `sort_order` always carry a fixed `order_id` tie-break, so paging never reorders across pages. `created_from`/`created_to` default to 00:00 `Asia/Bangkok` on the Project's start date through the current time. Export uses the same filters and sort as the list, without pagination.
-
-Every returned order reads the buyer, staff, payment, item, and applied-promotion data recorded at checkout; it is never rejoined against the current Product, User, or Promotion tables, so later edits to any of those never change order history. A Project that has orders cannot be deleted, and its sale dates cannot be changed to exclude an existing order's date (`409 PROJECT_CONFLICT`).
-
-Order history reads immutable snapshots created by checkout; manual request coverage is documented in [`docs/manual-tests/BE-009-orders.http`](docs/manual-tests/BE-009-orders.http).
+All three require `ADMIN`. List and export support filtering and sorting; orders use checkout-time snapshots. A Project with orders cannot be deleted or moved outside an order date.
 
 ## Documentation
 
 - [`docs/openapi.yaml`](docs/openapi.yaml) is the single machine-readable source of truth.
-- [`docs/project-pos-api-contract.md`](docs/project-pos-api-contract.md) is reserved for the review companion to the Project/POS contract.
 - `/docs` renders implemented Project/POS and order history operations.
 
 ## Responses
