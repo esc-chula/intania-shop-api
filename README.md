@@ -2,24 +2,6 @@
 
 Admin-only backend for authentication, product catalogue management, inventory, uploads, Project administration, Promotions, POS catalogue/quotation/paid checkout, and Project order history APIs (list, detail, export). The previous customer storefront domains have been removed.
 
-## Current scope
-
-The server currently implements the service, authentication, catalogue, inventory, upload, Project, Promotion, POS, and order history routes documented below:
-
-- 4 service and documentation routes
-- 3 Google OAuth routes
-- 9 product and variant routes
-- 4 inventory routes
-- 3 upload routes
-- 8 Project and project-product routes
-- 5 Promotion routes
-- 3 POS catalogue, quotation, and checkout routes
-- 3 Project order history routes (list, detail, Excel export)
-
-All catalogue, inventory, upload, Project, Promotion (admin), POS, and order history operations require an authenticated `ADMIN` JWT. `USER` accounts can complete Google OAuth but cannot access business APIs.
-
-The interactive `/docs` page shows the implemented Project, Promotion, POS, and order history operations. Only operations explicitly tagged `PLANNED` are API contracts that are not registered by the current server.
-
 ## Technology
 
 - Go 1.26.5
@@ -44,14 +26,7 @@ The server validates required configuration at startup. `make run`, `make migrat
 
 ## Clean database setup
 
-There is one clean baseline migration. It creates only:
-
-- `users`
-- `products`
-- `variants`
-- `stock_transactions`
-
-It also creates only `user_role`, `product_status`, `stock_transaction_type`, and `product_type` enums. Migration history from the storefront backend is intentionally unsupported.
+Migration history from the storefront backend is intentionally unsupported.
 
 Reset the local database before using this version:
 
@@ -68,6 +43,27 @@ make run
 ```
 
 For hot reload, use `make dev` after installing Air.
+
+## Local frontend seed data
+
+For a repeatable local catalogue and POS fixture, run this after migrations:
+
+```bash
+make seed
+```
+
+This command runs only against the Docker `db` service. It resets local
+catalogue, inventory, Project, Promotion, payment-slip, and POS-order data,
+but preserves OAuth `users`. Do not use it against production or any database
+whose shop data must be retained.
+
+The fixture creates an ACTIVE `Intania Music Fest 2026` Project, five themed
+products (including a Polo with M/L variants), positive initial stock and
+stock history, Project selling prices, and the `Swagged Out Set` Promotion.
+It deliberately has no product images, GCS objects, user accounts, or sample
+orders. It prepares consistent frontend demo data; use the Bruno release suite
+to exercise API routes, authorization failures, checkout rollback, and
+external GCS flows.
 
 ## Authentication
 
@@ -135,9 +131,9 @@ Payment slip uploads accept exactly one JPEG, PNG, or WebP image of at most 10 M
 
 | Method | Path | Authorization | Description |
 | --- | --- | --- | --- |
-| `GET` | `/projects/{project_id}/promotions` | Authenticated | List project Promotions with current item data and calculated totals |
+| `GET` | `/projects/{project_id}/promotions` | `ADMIN` | List project Promotions with current item data and calculated totals |
 | `POST` | `/projects/{project_id}/promotions` | `ADMIN` | Create a Promotion |
-| `GET` | `/projects/{project_id}/promotions/{promotion_id}` | Authenticated | Get one hydrated Promotion |
+| `GET` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Get one hydrated Promotion |
 | `PUT` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Replace the complete Promotion and item set atomically |
 | `DELETE` | `/projects/{project_id}/promotions/{promotion_id}` | `ADMIN` | Delete a Promotion |
 

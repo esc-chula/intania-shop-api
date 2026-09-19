@@ -103,6 +103,45 @@ func TestNewHandlerProtectsOrderRoutesWithAdminRole(t *testing.T) {
 	}
 }
 
+func TestNewHandlerProtectsPromotionReadRoutesWithAdminRole(t *testing.T) {
+	tests := []struct {
+		name            string
+		path            string
+		header          string
+		identity        models.Identity
+		verifyErr       error
+		wantStatus      int
+		wantListCalls   int
+		wantDetailCalls int
+	}{
+		{name: "missing token", path: "/projects/7/promotions", wantStatus: http.StatusUnauthorized},
+		{name: "user forbidden", path: "/projects/7/promotions", header: "Bearer valid", identity: models.Identity{UserID: 2, Role: models.RoleUser}, wantStatus: http.StatusForbidden},
+		{name: "user forbidden from promotion detail", path: "/projects/7/promotions/3", header: "Bearer valid", identity: models.Identity{UserID: 2, Role: models.RoleUser}, wantStatus: http.StatusForbidden},
+		{name: "admin lists promotions", path: "/projects/7/promotions", header: "Bearer valid", identity: models.Identity{UserID: 1, Role: models.RoleAdmin}, wantStatus: http.StatusOK, wantListCalls: 1},
+		{name: "admin gets promotion", path: "/projects/7/promotions/3", header: "Bearer valid", identity: models.Identity{UserID: 1, Role: models.RoleAdmin}, wantStatus: http.StatusOK, wantDetailCalls: 1},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			promotionService := &serverPromotionServiceStub{}
+			handler := NewHandler(Dependencies{
+				Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+				PromotionHandler: handlers.NewPromotionHandler(promotionService),
+				TokenVerifier:    serverTokenVerifier{identity: test.identity, err: test.verifyErr},
+			})
+
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			request.Header.Set("Authorization", test.header)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			if response.Code != test.wantStatus || promotionService.listCalls != test.wantListCalls || promotionService.detailCalls != test.wantDetailCalls {
+				t.Fatalf("status/list/detail = %d/%d/%d, want %d/%d/%d", response.Code, promotionService.listCalls, promotionService.detailCalls, test.wantStatus, test.wantListCalls, test.wantDetailCalls)
+			}
+		})
+	}
+}
+
 func TestNewHandlerProtectsCheckoutAndPaymentSlipRoutesWithAdminRole(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -186,6 +225,21 @@ type serverOrderServiceStub struct {
 	listCalls int
 }
 
+type serverPromotionServiceStub struct {
+	listCalls   int
+	detailCalls int
+}
+
+func (stub *serverPromotionServiceStub) List(context.Context, int64) (models.ProjectPromotionListData, error) {
+	stub.listCalls++
+	return models.ProjectPromotionListData{}, nil
+}
+
+func (stub *serverPromotionServiceStub) Detail(context.Context, int64, int64) (models.ProjectPromotion, error) {
+	stub.detailCalls++
+	return models.ProjectPromotion{}, nil
+}
+
 func (stub *serverOrderServiceStub) List(context.Context, int64, usecases.OrderListQuery, int32, int32) (models.OrderListResponse, error) {
 	stub.listCalls++
 	return models.OrderListResponse{}, nil
@@ -209,5 +263,6 @@ func (stub *serverPaymentSlipServiceStub) Upload(context.Context, usecases.Payme
 var (
 	_ handlers.POSService         = (*serverPOSServiceStub)(nil)
 	_ handlers.OrderService       = (*serverOrderServiceStub)(nil)
+	_ handlers.PromotionService   = (*serverPromotionServiceStub)(nil)
 	_ handlers.PaymentSlipService = (*serverPaymentSlipServiceStub)(nil)
 )

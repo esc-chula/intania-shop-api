@@ -1,4 +1,4 @@
-.PHONY: build check ci dev docs-check fmt fmt-check lint migrate run test test-integration vet
+.PHONY: build check ci dev docs-check fmt fmt-check lint migrate run seed test test-integration vet
 
 build:
 	go build ./...
@@ -22,6 +22,10 @@ docs-check:
 migrate:
 	@test -f .env || (echo ".env is required; copy .env.example to get started"; exit 1)
 	@set -a; . ./.env; set +a; go run . migrate
+
+seed:
+	@echo "Resetting local Docker demo data; users are preserved."
+	@docker compose exec -T db psql -v ON_ERROR_STOP=1 -U postgres -d intania_shop < scripts/seed.sql
 
 run:
 	@test -f .env || (echo ".env is required; copy .env.example to get started"; exit 1)

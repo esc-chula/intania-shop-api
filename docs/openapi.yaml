@@ -51,6 +51,28 @@ paths:
           content:
             text/plain:
               schema: { type: string, const: unavailable }
+  /openapi.yaml:
+    get:
+      operationId: getOpenAPIDocument
+      tags: [Service]
+      summary: Get the OpenAPI document
+      responses:
+        "200":
+          description: Canonical OpenAPI document
+          content:
+            application/yaml:
+              schema: { type: string }
+  /docs:
+    get:
+      operationId: getAPIReference
+      tags: [Service]
+      summary: Get the interactive API reference
+      responses:
+        "200":
+          description: Scalar API reference page
+          content:
+            text/html:
+              schema: { type: string }
   /auth/google:
     get:
       operationId: startGoogleOAuth
@@ -442,12 +464,11 @@ paths:
       tags: [Project Promotions]
       summary: List project pricing promotions
       description: |
-        Requires an authenticated bearer token. Admins may access this route as
-        well. Promotions are ordered by ascending promotion_id, and each item's
+        Admin only. Promotions are ordered by ascending promotion_id, and each item's
         product_id followed by variant_id with variantless items first. Bundle
         totals and item unit prices are hydrated from the current Project Product
         prices on every response.
-      security: [{ bearerAuth: [] }]
+      security: [{ bearerAuth: [ADMIN] }]
       responses:
         "200": { $ref: "#/components/responses/ProjectPromotionList" }
         "400": { $ref: "#/components/responses/ProjectAPIError" }
@@ -484,10 +505,9 @@ paths:
       tags: [Project Promotions]
       summary: Get a project pricing promotion
       description: |
-        Requires an authenticated bearer token. Admins may access this route as
-        well. The response hydrates current Project Product/Product/Variant data
+        Admin only. The response hydrates current Project Product/Product/Variant data
         and recalculates original_bundle_price and discount from current prices.
-      security: [{ bearerAuth: [] }]
+      security: [{ bearerAuth: [ADMIN] }]
       responses:
         "200": { $ref: "#/components/responses/ProjectPromotion" }
         "400": { $ref: "#/components/responses/ProjectAPIError" }
