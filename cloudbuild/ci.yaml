@@ -1,0 +1,9 @@
+steps:
+  - name: golang:1.26.5-bookworm
+    entrypoint: bash
+    args:
+      - -ceu
+      - make ci
+
+options:
+  logging: CLOUD_LOGGING_ONLY

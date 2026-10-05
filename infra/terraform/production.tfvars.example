@@ -1,0 +1,20 @@
+# Copy this to production.tfvars (which is ignored by Git) before applying.
+# These values are explicit because this is a paid production DB.
+project_id = "intania-shop-510714"
+region     = "asia-southeast1"
+
+github_owner = "esc-chula"
+github_repo  = "intania-shop-api"
+
+# Baseline 1 vCPU / 3.75 GB Cloud SQL machine. Confirm its cost in the console
+# before apply; choose a larger tier if the API workload needs it.
+sql_tier = "db-custom-1-3840"
+
+# Replace the CORS value with the real production frontend domain. The default
+# Cloud Run URL does not exist until the first deployment, so use the temporary
+# HTTPS redirect below for bootstrap; replace it with the generated Run URL and
+# release once more before enabling Google login.
+cors_allowed_origins = "https://app.example.com"
+google_redirect_url  = "https://example.com/intania-shop-bootstrap-callback"
+
+jwt_issuer = "intania-shop-api"

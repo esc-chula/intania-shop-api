@@ -1,0 +1,87 @@
+substitutions:
+  _AR_REPOSITORY: intania-shop-api
+  _CLOUD_SQL_INSTANCE: ""
+  _CORS_ALLOWED_ORIGINS: ""
+  _GOOGLE_REDIRECT_URL: ""
+  _JWT_ISSUER: intania-shop-api
+  _MIGRATION_JOB: intania-shop-api-migrate
+  _REGION: asia-southeast1
+  _RUNTIME_SERVICE_ACCOUNT: ""
+  _SERVICE_NAME: intania-shop-api
+  _UPLOAD_BUCKET: ""
+
+steps:
+  - name: golang:1.26.5-bookworm
+    entrypoint: bash
+    args:
+      - -ceu
+      - make ci
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/intania-shop-api:$SHORT_SHA
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/intania-shop-api:$SHORT_SHA
+
+  # Use the exact release image. A migration failure stops before a new service revision.
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_MIGRATION_JOB}
+      - --region=${_REGION}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/intania-shop-api:$SHORT_SHA
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
+      - --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+      - --set-secrets=DATABASE_URL=intania-shop-api-database-url:latest
+      - --command=/intania-shop-api
+      - --args=migrate
+      - --max-retries=0
+      - --wait
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - ${_MIGRATION_JOB}
+      - --region=${_REGION}
+      - --wait
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        gcloud run deploy ${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/intania-shop-api:$SHORT_SHA \
+          --service-account=${_RUNTIME_SERVICE_ACCOUNT} \
+          --allow-unauthenticated \
+          --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
+          --set-secrets=DATABASE_URL=intania-shop-api-database-url:latest,JWT_SECRET=intania-shop-api-jwt-secret:latest,GOOGLE_CLIENT_ID=intania-shop-api-google-client-id:latest,GOOGLE_CLIENT_SECRET=intania-shop-api-google-client-secret:latest \
+          --set-env-vars=^@^SERVER_ADDR=0.0.0.0:8080@DB_MAX_CONNS=5@DB_MIN_CONNS=0@JWT_ISSUER=${_JWT_ISSUER}@AUTH_COOKIE_SECURE=true@CORS_ALLOWED_ORIGINS=${_CORS_ALLOWED_ORIGINS}@GOOGLE_REDIRECT_URL=${_GOOGLE_REDIRECT_URL}@GCS_BUCKET=${_UPLOAD_BUCKET} \
+          --port=8080
+        gcloud run services describe ${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --format='value(status.url)' > /workspace/service-url
+
+  - name: curlimages/curl:8.12.1
+    entrypoint: sh
+    args:
+      - -ceu
+      - curl --fail --retry 5 --retry-connrefused --retry-delay 3 "`cat /workspace/service-url`/health"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/intania-shop-api:$SHORT_SHA

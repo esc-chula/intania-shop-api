@@ -3,6 +3,14 @@ tmp/
 coverage.out
 intania-shop-api
 
+# Terraform keeps local provider downloads and state here. Production state
+# lives in the bootstrap GCS bucket and real tfvars contain deployment values.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
 .env.*
 !.env.example
 
