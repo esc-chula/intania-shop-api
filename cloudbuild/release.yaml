@@ -2,6 +2,7 @@ substitutions:
   _AR_REPOSITORY: intania-shop-api
   _CLOUD_SQL_INSTANCE: ""
   _CORS_ALLOWED_ORIGINS: ""
+  _FRONTEND_CALLBACK_URL: ""
   _GOOGLE_REDIRECT_URL: ""
   _JWT_ISSUER: intania-shop-api
   _MIGRATION_JOB: intania-shop-api-migrate
@@ -68,7 +69,7 @@ steps:
           --no-invoker-iam-check \
           --set-cloudsql-instances=${_CLOUD_SQL_INSTANCE} \
           --set-secrets=DATABASE_URL=intania-shop-api-database-url:latest,JWT_SECRET=intania-shop-api-jwt-secret:latest,GOOGLE_CLIENT_ID=intania-shop-api-google-client-id:latest,GOOGLE_CLIENT_SECRET=intania-shop-api-google-client-secret:latest \
-          --set-env-vars=^@^SERVER_ADDR=0.0.0.0:8080@DB_MAX_CONNS=5@DB_MIN_CONNS=0@JWT_ISSUER=${_JWT_ISSUER}@AUTH_COOKIE_SECURE=true@CORS_ALLOWED_ORIGINS=${_CORS_ALLOWED_ORIGINS}@GOOGLE_REDIRECT_URL=${_GOOGLE_REDIRECT_URL}@GCS_BUCKET=${_UPLOAD_BUCKET} \
+          --set-env-vars=^@^SERVER_ADDR=0.0.0.0:8080@DB_MAX_CONNS=5@DB_MIN_CONNS=0@JWT_ISSUER=${_JWT_ISSUER}@AUTH_COOKIE_SECURE=true@CORS_ALLOWED_ORIGINS=${_CORS_ALLOWED_ORIGINS}@FRONTEND_CALLBACK_URL=${_FRONTEND_CALLBACK_URL}@GOOGLE_REDIRECT_URL=${_GOOGLE_REDIRECT_URL}@GCS_BUCKET=${_UPLOAD_BUCKET} \
           --port=8080
         gcloud run services describe ${_SERVICE_NAME} \
           --region=${_REGION} \
