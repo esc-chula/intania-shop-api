@@ -3,6 +3,7 @@ locals {
     _AR_REPOSITORY           = google_artifact_registry_repository.api.repository_id
     _CLOUD_SQL_INSTANCE      = google_sql_database_instance.primary.connection_name
     _CORS_ALLOWED_ORIGINS    = var.cors_allowed_origins
+    _FRONTEND_CALLBACK_URL   = var.frontend_callback_url
     _GOOGLE_REDIRECT_URL     = var.google_redirect_url
     _JWT_ISSUER              = var.jwt_issuer
     _MIGRATION_JOB           = local.cloud_run_job

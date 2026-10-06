@@ -28,7 +28,7 @@ func runServe(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	if err := cfg.Auth.ValidateForServer(); err != nil {
+	if err := cfg.ValidateForServer(); err != nil {
 		return fmt.Errorf("validate authentication configuration: %w", err)
 	}
 	tokens, err := usecases.NewTokenManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.JWTTTL)
@@ -56,7 +56,14 @@ func runServe(cmd *cobra.Command, _ []string) error {
 	defer func() { _ = uploader.Close() }()
 
 	users := repositories.NewUserRepository(pool)
-	authHandler := handlers.NewAuthHandler(oauth, usecases.NewAuthService(users, tokens))
+	authHandler, err := handlers.NewAuthHandler(
+		oauth,
+		usecases.NewAuthService(users, tokens, repositories.NewOAuthLoginCodeRepository(pool)),
+		cfg.Auth.FrontendCallbackURL,
+	)
+	if err != nil {
+		return fmt.Errorf("initialize authentication handler: %w", err)
+	}
 	productHandler := handlers.NewProductHandler(usecases.NewProductService(repositories.NewProductRepository(pool)))
 	productAdminHandler := handlers.NewProductAdminHandler(usecases.NewProductAdminService(repositories.NewProductRepository(pool)))
 	inventoryHandler := handlers.NewInventoryHandler(usecases.NewInventoryService(repositories.NewInventoryRepository(pool)))

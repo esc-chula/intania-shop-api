@@ -80,3 +80,65 @@ func TestLoad(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthConfigValidateForServer(t *testing.T) {
+	t.Parallel()
+
+	valid := AuthConfig{
+		JWTSecret:           "12345678901234567890123456789012",
+		GoogleClientID:      "client-id",
+		GoogleClientSecret:  "client-secret",
+		GoogleRedirectURL:   "https://api.example.com/auth/google/callback",
+		FrontendCallbackURL: "https://app.example.com/auth/callback",
+	}
+
+	tests := map[string]struct {
+		config    AuthConfig
+		wantError bool
+	}{
+		"valid":                      {config: valid},
+		"missing frontend callback":  {config: func() AuthConfig { cfg := valid; cfg.FrontendCallbackURL = ""; return cfg }(), wantError: true},
+		"relative frontend callback": {config: func() AuthConfig { cfg := valid; cfg.FrontendCallbackURL = "/auth/callback"; return cfg }(), wantError: true},
+		"frontend callback with fragment": {config: func() AuthConfig {
+			cfg := valid
+			cfg.FrontendCallbackURL = "https://app.example.com/auth/callback#token"
+			return cfg
+		}(), wantError: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			err := test.config.ValidateForServer()
+			if test.wantError && err == nil {
+				t.Fatal("ValidateForServer() error = nil, want error")
+			}
+			if !test.wantError && err != nil {
+				t.Fatalf("ValidateForServer() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestConfigValidateForServerRequiresFrontendCORSOrigin(t *testing.T) {
+	t.Parallel()
+
+	config := Config{
+		CORS: CORSConfig{AllowedOrigins: []string{"https://app.example.com"}},
+		Auth: AuthConfig{
+			JWTSecret:           "12345678901234567890123456789012",
+			GoogleClientID:      "client-id",
+			GoogleClientSecret:  "client-secret",
+			GoogleRedirectURL:   "https://api.example.com/auth/google/callback",
+			FrontendCallbackURL: "https://app.example.com/auth/callback",
+		},
+	}
+	if err := config.ValidateForServer(); err != nil {
+		t.Fatalf("ValidateForServer() error = %v", err)
+	}
+
+	config.CORS.AllowedOrigins = []string{"https://other.example.com"}
+	if err := config.ValidateForServer(); err == nil {
+		t.Fatal("ValidateForServer() error = nil, want error when frontend origin is not in CORS_ALLOWED_ORIGINS")
+	}
+}

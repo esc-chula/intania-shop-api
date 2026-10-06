@@ -36,6 +36,16 @@ variable "cors_allowed_origins" {
   }
 }
 
+variable "frontend_callback_url" {
+  description = "Exact frontend URL that receives the short-lived OAuth login code after Google sign-in."
+  type        = string
+
+  validation {
+    condition     = can(regex("^https://", var.frontend_callback_url))
+    error_message = "frontend_callback_url must be an HTTPS frontend callback URL."
+  }
+}
+
 variable "google_redirect_url" {
   description = "Exact Google OAuth callback URL exposed by Cloud Run."
   type        = string

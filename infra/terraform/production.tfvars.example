@@ -15,6 +15,7 @@ sql_tier = "db-custom-1-3840"
 # HTTPS redirect below for bootstrap; replace it with the generated Run URL and
 # release once more before enabling Google login.
 cors_allowed_origins = "https://app.example.com"
+frontend_callback_url = "https://app.example.com/auth/callback"
 google_redirect_url  = "https://example.com/intania-shop-bootstrap-callback"
 
 jwt_issuer = "intania-shop-api"
