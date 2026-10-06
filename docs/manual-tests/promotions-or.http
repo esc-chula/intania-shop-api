@@ -1,0 +1,65 @@
+@baseUrl = http://localhost:8080
+@adminToken = replace-with-admin-token
+@projectId = 1
+@shirtProductId = 10
+@largeVariantId = 22
+@xlargeVariantId = 23
+@pinProductId = 11
+
+### Create (size L OR XL) AND pin
+POST {{baseUrl}}/projects/{{projectId}}/promotions
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "L or XL shirt with pin",
+  "promotion_price": "329.00",
+  "item_groups": [
+    {
+      "options": [
+        { "product_id": {{shirtProductId}}, "variant_id": {{largeVariantId}}, "quantity": 1 },
+        { "product_id": {{shirtProductId}}, "variant_id": {{xlargeVariantId}}, "quantity": 1 }
+      ]
+    },
+    {
+      "options": [
+        { "product_id": {{pinProductId}}, "variant_id": null, "quantity": 1 }
+      ]
+    }
+  ]
+}
+
+### Quote with L
+POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "items": [
+    { "product_id": {{shirtProductId}}, "variant_id": {{largeVariantId}}, "quantity": 1 },
+    { "product_id": {{pinProductId}}, "variant_id": null, "quantity": 1 }
+  ]
+}
+
+### Quote with XL
+POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "items": [
+    { "product_id": {{shirtProductId}}, "variant_id": {{xlargeVariantId}}, "quantity": 1 },
+    { "product_id": {{pinProductId}}, "variant_id": null, "quantity": 1 }
+  ]
+}
+
+### Legacy items payload must be rejected
+POST {{baseUrl}}/projects/{{projectId}}/promotions
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Legacy payload",
+  "promotion_price": "329.00",
+  "items": [{ "product_id": {{shirtProductId}}, "variant_id": {{largeVariantId}}, "quantity": 1 }]
+}

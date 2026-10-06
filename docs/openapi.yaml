@@ -464,10 +464,10 @@ paths:
       tags: [Project Promotions]
       summary: List project pricing promotions
       description: |
-        Admin only. Promotions are ordered by ascending promotion_id, and each item's
-        product_id followed by variant_id with variantless items first. Bundle
-        totals and item unit prices are hydrated from the current Project Product
-        prices on every response.
+        Admin only. Promotions are ordered by ascending promotion_id. Options inside
+        each item group are alternatives (OR); every group is required (AND). Bundle
+        price and discount ranges plus option unit prices are hydrated from current
+        Project Product prices on every response.
       security: [{ bearerAuth: [ADMIN] }]
       responses:
         "200": { $ref: "#/components/responses/ProjectPromotionList" }
@@ -480,10 +480,10 @@ paths:
       tags: [Project Promotions]
       summary: Create a project pricing promotion
       description: |
-        Admin only. The trimmed name must be non-empty, items must contain at
-        least one unique (product_id, variant_id) reference, and the string-only
-        promotion price cannot exceed the current original bundle price, and
-        arithmetic overflow is reported as a validation error.
+        Admin only. The trimmed name and every item group must be non-empty; every
+        (product_id, variant_id) reference is unique across the Promotion. Options
+        within a group are ORed while groups are ANDed. The fixed promotion price
+        cannot exceed the minimum possible bundle price.
         Project Product references are resolved in the path project and the
         mutation is transactional. Completed projects reject changes.
       security: [{ bearerAuth: [ADMIN] }]
@@ -506,7 +506,7 @@ paths:
       summary: Get a project pricing promotion
       description: |
         Admin only. The response hydrates current Project Product/Product/Variant data
-        and recalculates original_bundle_price and discount from current prices.
+        and recalculates minimum/maximum bundle prices and discounts from current prices.
       security: [{ bearerAuth: [ADMIN] }]
       responses:
         "200": { $ref: "#/components/responses/ProjectPromotion" }
@@ -520,8 +520,8 @@ paths:
       summary: Update a project pricing promotion
       description: |
         Admin only. This is a full, atomic replacement of the promotion name,
-        price, and complete item set. Each (product_id, variant_id) reference
-        must be unique and resolve to the path project; a failed validation or
+        price, and complete item groups. Each (product_id, variant_id) reference
+        must be unique across groups and resolve to the path project; a failed validation or
         resolution leaves the previous promotion unchanged. Arithmetic overflow
         is reported as a validation error. Completed projects reject changes.
       security: [{ bearerAuth: [ADMIN] }]
@@ -772,9 +772,12 @@ components:
           example:
             name: Shirt and pin set
             promotion_price: "329.00"
-            items:
-              - { product_id: 10, variant_id: 22, quantity: 1 }
-              - { product_id: 11, variant_id: null, quantity: 1 }
+            item_groups:
+              - options:
+                  - { product_id: 10, variant_id: 22, quantity: 1 }
+                  - { product_id: 10, variant_id: 23, quantity: 1 }
+              - options:
+                  - { product_id: 11, variant_id: null, quantity: 1 }
     POSQuote:
       required: true
       content:
@@ -1047,20 +1050,29 @@ components:
         product_id: { type: integer, format: int64, minimum: 1 }
         variant_id: { type: [integer, "null"], format: int64, minimum: 1, description: Null or omission identifies a variantless product }
         quantity: { type: integer, format: int32, minimum: 1 }
+    ProjectPromotionItemGroupInput:
+      type: object
+      additionalProperties: false
+      required: [options]
+      properties:
+        options:
+          type: array
+          minItems: 1
+          description: One of these options must be present. Options are ORed within this group.
+          items: { $ref: "#/components/schemas/ProjectPromotionItemInput" }
     ProjectPromotionMutationRequest:
       type: object
       additionalProperties: false
       description: Full create or replacement payload. Names are trimmed before validation and persistence.
-      required: [name, promotion_price, items]
+      required: [name, promotion_price, item_groups]
       properties:
         name: { type: string, minLength: 1, maxLength: 150, description: Trimmed before validation; whitespace-only names are rejected }
         promotion_price: { $ref: "#/components/schemas/THBAmount" }
-        items:
+        item_groups:
           type: array
           minItems: 1
-          uniqueItems: true
-          description: Each product_id/variant_id reference must be unique, including when quantities differ.
-          items: { $ref: "#/components/schemas/ProjectPromotionItemInput" }
+          description: All groups are required (AND); options within each group are alternatives (OR). Each product_id/variant_id reference must be unique across all groups.
+          items: { $ref: "#/components/schemas/ProjectPromotionItemGroupInput" }
     ProjectPromotionItem:
       type: object
       additionalProperties: false
@@ -1074,23 +1086,33 @@ components:
         size: { type: [string, "null"], maxLength: 20 }
         color: { type: [string, "null"], maxLength: 50 }
         unit_price: { $ref: "#/components/schemas/THBAmount" }
+    ProjectPromotionItemGroup:
+      type: object
+      additionalProperties: false
+      required: [options]
+      properties:
+        options:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/ProjectPromotionItem" }
     ProjectPromotion:
       type: object
       additionalProperties: false
       description: |
-        Hydrated project promotion. original_bundle_price is the sum of current
-        Project Product unit prices multiplied by required quantities; discount
-        is original_bundle_price minus promotion_price and is recalculated on
-        every Get/List response.
-      required: [promotion_id, project_id, name, items, original_bundle_price, promotion_price, discount, created_at, updated_at]
+        Hydrated project promotion. Every item group is required, while options
+        inside a group are alternatives. Price ranges are calculated from current
+        Project Product prices and represent the minimum/maximum eligible bundle.
+      required: [promotion_id, project_id, name, item_groups, original_bundle_price_min, original_bundle_price_max, promotion_price, discount_min, discount_max, created_at, updated_at]
       properties:
         promotion_id: { type: integer, format: int64, minimum: 1 }
         project_id: { type: integer, format: int64, minimum: 1 }
         name: { type: string, minLength: 1, maxLength: 150 }
-        items: { type: array, minItems: 1, items: { $ref: "#/components/schemas/ProjectPromotionItem" } }
-        original_bundle_price: { $ref: "#/components/schemas/THBAmount" }
+        item_groups: { type: array, minItems: 1, items: { $ref: "#/components/schemas/ProjectPromotionItemGroup" } }
+        original_bundle_price_min: { $ref: "#/components/schemas/THBAmount" }
+        original_bundle_price_max: { $ref: "#/components/schemas/THBAmount" }
         promotion_price: { $ref: "#/components/schemas/THBAmount" }
-        discount: { $ref: "#/components/schemas/THBAmount" }
+        discount_min: { $ref: "#/components/schemas/THBAmount" }
+        discount_max: { $ref: "#/components/schemas/THBAmount" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ProjectPromotionListData:
@@ -1100,7 +1122,7 @@ components:
       properties:
         promotions:
           type: array
-          description: Ordered by ascending promotion_id; each promotion's items are ordered by product_id then variant_id with null first.
+          description: Ordered by ascending promotion_id; groups retain request order and options are ordered by product_id then variant_id with null first.
           items: { $ref: "#/components/schemas/ProjectPromotion" }
     POSCategory:
       type: object
@@ -1522,12 +1544,17 @@ components:
           promotion_id: 3
           project_id: 7
           name: Shirt and pin set
-          items:
-            - { product_id: 10, variant_id: 22, quantity: 1, product_name: Intania Shirt, size: M, color: Navy, unit_price: "299.00" }
-            - { product_id: 11, variant_id: null, quantity: 1, product_name: Enamel Pin, size: null, color: null, unit_price: "59.00" }
-          original_bundle_price: "358.00"
+          item_groups:
+            - options:
+                - { product_id: 10, variant_id: 22, quantity: 1, product_name: Intania Shirt, size: M, color: Navy, unit_price: "299.00" }
+                - { product_id: 10, variant_id: 23, quantity: 1, product_name: Intania Shirt, size: L, color: Navy, unit_price: "319.00" }
+            - options:
+                - { product_id: 11, variant_id: null, quantity: 1, product_name: Enamel Pin, size: null, color: null, unit_price: "59.00" }
+          original_bundle_price_min: "358.00"
+          original_bundle_price_max: "378.00"
           promotion_price: "329.00"
-          discount: "29.00"
+          discount_min: "29.00"
+          discount_max: "49.00"
           created_at: "2026-08-26T11:00:00+07:00"
           updated_at: "2026-08-26T11:00:00+07:00"
     ProjectPromotionListEnvelope:
