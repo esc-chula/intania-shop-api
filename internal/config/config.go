@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -57,13 +58,14 @@ type StorageConfig struct {
 
 // AuthConfig controls access-token and Google OAuth settings.
 type AuthConfig struct {
-	JWTSecret          string
-	JWTIssuer          string
-	JWTTTL             time.Duration
-	GoogleClientID     string
-	GoogleClientSecret string
-	GoogleRedirectURL  string
-	CookieSecure       bool
+	JWTSecret           string
+	JWTIssuer           string
+	JWTTTL              time.Duration
+	GoogleClientID      string
+	GoogleClientSecret  string
+	GoogleRedirectURL   string
+	FrontendCallbackURL string
+	CookieSecure        bool
 }
 
 // ValidateForServer confirms all security-sensitive server configuration is present.
@@ -71,10 +73,32 @@ func (config AuthConfig) ValidateForServer() error {
 	if len(config.JWTSecret) < 32 {
 		return fmt.Errorf("JWT_SECRET must be at least 32 bytes")
 	}
-	if strings.TrimSpace(config.GoogleClientID) == "" || strings.TrimSpace(config.GoogleClientSecret) == "" || strings.TrimSpace(config.GoogleRedirectURL) == "" {
-		return fmt.Errorf("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URL are required")
+	if strings.TrimSpace(config.GoogleClientID) == "" || strings.TrimSpace(config.GoogleClientSecret) == "" || strings.TrimSpace(config.GoogleRedirectURL) == "" || strings.TrimSpace(config.FrontendCallbackURL) == "" {
+		return fmt.Errorf("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URL, and FRONTEND_CALLBACK_URL are required")
+	}
+	frontendCallbackURL, err := url.Parse(config.FrontendCallbackURL)
+	if err != nil || frontendCallbackURL.Host == "" || (frontendCallbackURL.Scheme != "http" && frontendCallbackURL.Scheme != "https") || frontendCallbackURL.User != nil || frontendCallbackURL.Fragment != "" {
+		return fmt.Errorf("FRONTEND_CALLBACK_URL must be an absolute HTTP(S) URL without credentials or a fragment")
 	}
 	return nil
+}
+
+// ValidateForServer confirms that the complete server configuration can support the browser OAuth flow.
+func (config Config) ValidateForServer() error {
+	if err := config.Auth.ValidateForServer(); err != nil {
+		return err
+	}
+	frontendCallbackURL, err := url.Parse(config.Auth.FrontendCallbackURL)
+	if err != nil {
+		return fmt.Errorf("parse FRONTEND_CALLBACK_URL: %w", err)
+	}
+	frontendOrigin := frontendCallbackURL.Scheme + "://" + frontendCallbackURL.Host
+	for _, allowedOrigin := range config.CORS.AllowedOrigins {
+		if allowedOrigin == frontendOrigin {
+			return nil
+		}
+	}
+	return fmt.Errorf("FRONTEND_CALLBACK_URL origin %q must be included in CORS_ALLOWED_ORIGINS", frontendOrigin)
 }
 
 // Load reads and validates configuration from the process environment.
@@ -153,13 +177,14 @@ func load(getenv func(string) string) (Config, error) {
 		Storage: StorageConfig{Bucket: strings.TrimSpace(getenv("GCS_BUCKET"))},
 		Log:     LogConfig{Level: strings.ToUpper(firstNonEmpty(getenv("LOG_LEVEL"), "INFO"))},
 		Auth: AuthConfig{
-			JWTSecret:          strings.TrimSpace(getenv("JWT_SECRET")),
-			JWTIssuer:          firstNonEmpty(getenv("JWT_ISSUER"), "intania-shop-api"),
-			JWTTTL:             jwtTTL,
-			GoogleClientID:     strings.TrimSpace(getenv("GOOGLE_CLIENT_ID")),
-			GoogleClientSecret: strings.TrimSpace(getenv("GOOGLE_CLIENT_SECRET")),
-			GoogleRedirectURL:  strings.TrimSpace(getenv("GOOGLE_REDIRECT_URL")),
-			CookieSecure:       firstNonEmpty(getenv("AUTH_COOKIE_SECURE"), "true") != "false",
+			JWTSecret:           strings.TrimSpace(getenv("JWT_SECRET")),
+			JWTIssuer:           firstNonEmpty(getenv("JWT_ISSUER"), "intania-shop-api"),
+			JWTTTL:              jwtTTL,
+			GoogleClientID:      strings.TrimSpace(getenv("GOOGLE_CLIENT_ID")),
+			GoogleClientSecret:  strings.TrimSpace(getenv("GOOGLE_CLIENT_SECRET")),
+			GoogleRedirectURL:   strings.TrimSpace(getenv("GOOGLE_REDIRECT_URL")),
+			FrontendCallbackURL: strings.TrimSpace(getenv("FRONTEND_CALLBACK_URL")),
+			CookieSecure:        firstNonEmpty(getenv("AUTH_COOKIE_SECURE"), "true") != "false",
 		},
 	}, nil
 }
