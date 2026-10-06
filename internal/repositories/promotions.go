@@ -37,6 +37,44 @@ type ProjectProductAssignment struct {
 	ProjectPrice     models.THBAmount
 }
 
+type promotionItemReference struct {
+	input      models.ProjectPromotionItemInput
+	groupIndex int32
+}
+
+func flattenPromotionItemGroups(groups []models.ProjectPromotionItemGroupInput) []promotionItemReference {
+	count := 0
+	for _, group := range groups {
+		count += len(group.Options)
+	}
+	references := make([]promotionItemReference, 0, count)
+	for groupIndex, group := range groups {
+		for _, option := range group.Options {
+			references = append(references, promotionItemReference{input: option, groupIndex: int32(groupIndex)})
+		}
+	}
+	return references
+}
+
+func promotionMutationItemGroups(mutation models.ProjectPromotionMutation) []models.ProjectPromotionItemGroupInput {
+	if len(mutation.ItemGroups) > 0 {
+		return mutation.ItemGroups
+	}
+	groups := make([]models.ProjectPromotionItemGroupInput, len(mutation.Items))
+	for index, item := range mutation.Items {
+		groups[index] = models.ProjectPromotionItemGroupInput{Options: []models.ProjectPromotionItemInput{item}}
+	}
+	return groups
+}
+
+func promotionItemInputs(references []promotionItemReference) []models.ProjectPromotionItemInput {
+	inputs := make([]models.ProjectPromotionItemInput, len(references))
+	for index, reference := range references {
+		inputs[index] = reference.input
+	}
+	return inputs
+}
+
 // ProjectProductResolver resolves public promotion item references to the
 // internal project-product assignments. The PromotionRepository uses the
 // transaction-aware equivalent during mutations so validation and writes are
@@ -153,18 +191,43 @@ func lockPromotion(ctx context.Context, tx pgx.Tx, projectID, promotionID int64)
 	return nil
 }
 
-func validatePromotionPrice(input models.ProjectPromotionMutation, assignments []ProjectProductAssignment) error {
-	var bundlePrice models.THBAmount
+func validatePromotionGroupPrice(input models.ProjectPromotionMutation, references []promotionItemReference, assignments []ProjectProductAssignment) error {
+	if len(references) != len(assignments) {
+		return fmt.Errorf("%w: option and assignment counts differ", ErrPromotionPricingCorrupt)
+	}
+
+	groupCount := 0
+	for _, reference := range references {
+		if reference.groupIndex < 0 {
+			return fmt.Errorf("%w: promotion option has an invalid group", ErrPromotionPricingCorrupt)
+		}
+		if int(reference.groupIndex)+1 > groupCount {
+			groupCount = int(reference.groupIndex) + 1
+		}
+	}
+	minimums := make([]*models.THBAmount, groupCount)
 	for index, assignment := range assignments {
-		lineTotal, err := assignment.ProjectPrice.Mul(int64(input.Items[index].Quantity))
+		lineTotal, err := assignment.ProjectPrice.Mul(int64(references[index].input.Quantity))
 		if err != nil {
 			if errors.Is(err, models.ErrTHBAmountOverflow) {
-				return fmt.Errorf("%w: calculate item %d: %v", models.ErrTHBAmountOverflow, index, err)
+				return fmt.Errorf("%w: calculate option %d: %v", models.ErrTHBAmountOverflow, index, err)
 			}
-			return fmt.Errorf("%w: calculate item %d: %v", ErrPromotionPricingCorrupt, index, err)
+			return fmt.Errorf("%w: calculate option %d: %v", ErrPromotionPricingCorrupt, index, err)
 		}
+		groupIndex := references[index].groupIndex
+		if minimums[groupIndex] == nil || lineTotal.Satang() < minimums[groupIndex].Satang() {
+			choice := lineTotal
+			minimums[groupIndex] = &choice
+		}
+	}
 
-		bundlePrice, err = bundlePrice.Add(lineTotal)
+	var minimumBundlePrice models.THBAmount
+	for groupIndex, minimum := range minimums {
+		if minimum == nil {
+			return fmt.Errorf("%w: promotion group %d has no options", ErrPromotionPricingCorrupt, groupIndex+1)
+		}
+		var err error
+		minimumBundlePrice, err = minimumBundlePrice.Add(*minimum)
 		if err != nil {
 			if errors.Is(err, models.ErrTHBAmountOverflow) {
 				return fmt.Errorf("%w: calculate bundle price: %v", models.ErrTHBAmountOverflow, err)
@@ -173,11 +236,18 @@ func validatePromotionPrice(input models.ProjectPromotionMutation, assignments [
 		}
 	}
 
-	if input.PromotionPrice.Satang() > bundlePrice.Satang() {
+	if input.PromotionPrice.Satang() > minimumBundlePrice.Satang() {
 		return ErrPromotionPriceExceedsBundle
 	}
 
 	return nil
+}
+
+// validatePromotionPrice keeps the legacy internal helper shape for callers
+// that supply one required item per group.
+func validatePromotionPrice(input models.ProjectPromotionMutation, assignments []ProjectProductAssignment) error {
+	references := flattenPromotionItemGroups(promotionMutationItemGroups(input))
+	return validatePromotionGroupPrice(input, references, assignments)
 }
 
 // buildRequestedTable returns a parameterized VALUES relation and its arguments.
@@ -269,25 +339,26 @@ func newProjectProductReference(productID int64, variantID *int64) projectProduc
 	return projectProductReference{productID: productID, variantID: *variantID}
 }
 
-func insertPromotionItems(ctx context.Context, tx pgx.Tx, promotionID, projectID int64, items []models.ProjectPromotionItemInput, assignments []ProjectProductAssignment) error {
-	if len(items) != len(assignments) {
+func insertPromotionItems(ctx context.Context, tx pgx.Tx, promotionID, projectID int64, references []promotionItemReference, assignments []ProjectProductAssignment) error {
+	if len(references) != len(assignments) {
 		return fmt.Errorf("%w: item and assignment counts differ", ErrPromotionPricingCorrupt)
 	}
 
-	if len(items) == 0 {
+	if len(references) == 0 {
 		return nil
 	}
 
-	values := make([]string, 0, len(items))
+	values := make([]string, 0, len(references))
 	arguments := []any{promotionID, projectID}
-	for index, item := range items {
+	for index, reference := range references {
 		projectProductParameter := len(arguments) + 1
 		quantityParameter := len(arguments) + 2
-		values = append(values, fmt.Sprintf("($1, $2, $%d, $%d)", projectProductParameter, quantityParameter))
-		arguments = append(arguments, assignments[index].ProjectProductID, item.Quantity)
+		groupParameter := len(arguments) + 3
+		values = append(values, fmt.Sprintf("($1, $2, $%d, $%d, $%d)", projectProductParameter, quantityParameter, groupParameter))
+		arguments = append(arguments, assignments[index].ProjectProductID, reference.input.Quantity, reference.groupIndex)
 	}
 
-	query := `INSERT INTO promotion_items (promotion_id, project_id, project_product_id, required_quantity)
+	query := `INSERT INTO promotion_items (promotion_id, project_id, project_product_id, required_quantity, group_index)
 		VALUES ` + strings.Join(values, ", ")
 	if _, err := tx.Exec(ctx, query, arguments...); err != nil {
 		return fmt.Errorf("insert promotion items: %w", err)
@@ -318,7 +389,7 @@ func buildPromotionHydrationQuery(projectID int64, promotionID *int64) (query st
 	const baseQuery = `
 		SELECT p.promotion_id, p.project_id, p.name, p.promotion_price::text,
 		       p.created_at, p.updated_at,
-		       pi.project_product_id, pi.required_quantity,
+		       pi.project_product_id, pi.required_quantity, pi.group_index,
 		       pp.product_id, pp.variant_id, pp.project_price::text,
 		       product.name, variant.variant_id, variant.size, variant.color
 		FROM promotions p
@@ -338,7 +409,7 @@ func buildPromotionHydrationQuery(projectID int64, promotionID *int64) (query st
 		query += ` AND p.promotion_id = $2`
 		arguments = append(arguments, *promotionID)
 	}
-	query += ` ORDER BY p.promotion_id ASC, pp.product_id ASC, pp.variant_id NULLS FIRST, pp.project_product_id ASC`
+	query += ` ORDER BY p.promotion_id ASC, pi.group_index ASC, pp.product_id ASC, pp.variant_id NULLS FIRST, pp.project_product_id ASC`
 
 	return
 }
@@ -352,6 +423,7 @@ type promotionHydrationRow struct {
 	UpdatedAt        time.Time
 	ProjectProductID *int64
 	RequiredQuantity *int32
+	GroupIndex       *int32
 	ProductID        *int64
 	VariantID        *int64
 	ProjectPrice     *string
@@ -384,7 +456,7 @@ func scanPromotionHydrationRow(rows pgx.Rows) (promotionHydrationRow, error) {
 	if err := rows.Scan(
 		&row.PromotionID, &row.ProjectID, &row.Name, &row.PromotionPrice,
 		&row.CreatedAt, &row.UpdatedAt,
-		&row.ProjectProductID, &row.RequiredQuantity,
+		&row.ProjectProductID, &row.RequiredQuantity, &row.GroupIndex,
 		&row.ProductID, &row.VariantID, &row.ProjectPrice,
 		&row.ProductName, &row.VariantRowID, &row.Size, &row.Color,
 	); err != nil {
@@ -403,7 +475,7 @@ func appendPromotionHydrationRow(promotions []models.ProjectPromotion, row promo
 			PromotionID:    row.PromotionID,
 			ProjectID:      row.ProjectID,
 			Name:           row.Name,
-			Items:          make([]models.ProjectPromotionItem, 0),
+			ItemGroups:     make([]models.ProjectPromotionItemGroup, 0),
 			PromotionPrice: promotionPrice,
 			CreatedAt:      row.CreatedAt,
 			UpdatedAt:      row.UpdatedAt,
@@ -417,7 +489,15 @@ func appendPromotionHydrationRow(promotions []models.ProjectPromotion, row promo
 	if err != nil {
 		return nil, err
 	}
+	if row.GroupIndex == nil || *row.GroupIndex < 0 {
+		return nil, fmt.Errorf("%w: promotion %d contains an invalid group", ErrPromotionPricingCorrupt, row.PromotionID)
+	}
 	last := len(promotions) - 1
+	groupIndex := int(*row.GroupIndex)
+	for len(promotions[last].ItemGroups) <= groupIndex {
+		promotions[last].ItemGroups = append(promotions[last].ItemGroups, models.ProjectPromotionItemGroup{Options: make([]models.ProjectPromotionItem, 0)})
+	}
+	promotions[last].ItemGroups[groupIndex].Options = append(promotions[last].ItemGroups[groupIndex].Options, item)
 	promotions[last].Items = append(promotions[last].Items, item)
 	return promotions, nil
 }
@@ -457,40 +537,72 @@ func promotionItemFromHydrationRow(row promotionHydrationRow) (models.ProjectPro
 
 func calculatePromotionTotals(promotions []models.ProjectPromotion) error {
 	for index := range promotions {
-		originalPrice, err := calculatePromotionBundlePrice(promotions[index])
+		minimum, maximum, err := calculatePromotionBundlePriceRange(promotions[index])
 		if err != nil {
 			return err
 		}
 
-		discount, err := originalPrice.Sub(promotions[index].PromotionPrice)
+		discountMin, err := minimum.Sub(promotions[index].PromotionPrice)
 		if err != nil {
 			return fmt.Errorf("%w: promotion %d price exceeds current bundle price", ErrPromotionPricingCorrupt, promotions[index].PromotionID)
 		}
+		discountMax, err := maximum.Sub(promotions[index].PromotionPrice)
+		if err != nil {
+			return fmt.Errorf("%w: promotion %d price exceeds current maximum bundle price", ErrPromotionPricingCorrupt, promotions[index].PromotionID)
+		}
 
-		promotions[index].OriginalBundlePrice = originalPrice
-		promotions[index].Discount = discount
+		promotions[index].OriginalBundlePriceMin = minimum
+		promotions[index].OriginalBundlePriceMax = maximum
+		promotions[index].DiscountMin = discountMin
+		promotions[index].DiscountMax = discountMax
+		promotions[index].OriginalBundlePrice = minimum
+		promotions[index].Discount = discountMin
 	}
 
 	return nil
 }
 
-func calculatePromotionBundlePrice(promotion models.ProjectPromotion) (models.THBAmount, error) {
-	if len(promotion.Items) == 0 {
-		return models.THBAmount{}, fmt.Errorf("%w: promotion %d has no items", ErrPromotionPricingCorrupt, promotion.PromotionID)
-	}
-
-	var originalPrice models.THBAmount
-	for itemIndex, item := range promotion.Items {
-		lineTotal, err := item.UnitPrice.Mul(int64(item.Quantity))
-		if err != nil {
-			return models.THBAmount{}, fmt.Errorf("%w: promotion %d item %d: %v", ErrPromotionPricingCorrupt, promotion.PromotionID, itemIndex, err)
-		}
-
-		originalPrice, err = originalPrice.Add(lineTotal)
-		if err != nil {
-			return models.THBAmount{}, fmt.Errorf("%w: promotion %d bundle price: %v", ErrPromotionPricingCorrupt, promotion.PromotionID, err)
+func calculatePromotionBundlePriceRange(promotion models.ProjectPromotion) (models.THBAmount, models.THBAmount, error) {
+	if len(promotion.ItemGroups) == 0 && len(promotion.Items) > 0 {
+		promotion.ItemGroups = make([]models.ProjectPromotionItemGroup, len(promotion.Items))
+		for index, item := range promotion.Items {
+			promotion.ItemGroups[index] = models.ProjectPromotionItemGroup{Options: []models.ProjectPromotionItem{item}}
 		}
 	}
+	if len(promotion.ItemGroups) == 0 {
+		return models.THBAmount{}, models.THBAmount{}, fmt.Errorf("%w: promotion %d has no item groups", ErrPromotionPricingCorrupt, promotion.PromotionID)
+	}
 
-	return originalPrice, nil
+	var minimum, maximum models.THBAmount
+	for groupIndex, group := range promotion.ItemGroups {
+		if len(group.Options) == 0 {
+			return models.THBAmount{}, models.THBAmount{}, fmt.Errorf("%w: promotion %d group %d has no options", ErrPromotionPricingCorrupt, promotion.PromotionID, groupIndex+1)
+		}
+		var groupMin, groupMax *models.THBAmount
+		for optionIndex, option := range group.Options {
+			lineTotal, err := option.UnitPrice.Mul(int64(option.Quantity))
+			if err != nil {
+				return models.THBAmount{}, models.THBAmount{}, fmt.Errorf("%w: promotion %d group %d option %d: %v", ErrPromotionPricingCorrupt, promotion.PromotionID, groupIndex+1, optionIndex+1, err)
+			}
+			if groupMin == nil || lineTotal.Satang() < groupMin.Satang() {
+				value := lineTotal
+				groupMin = &value
+			}
+			if groupMax == nil || lineTotal.Satang() > groupMax.Satang() {
+				value := lineTotal
+				groupMax = &value
+			}
+		}
+		var err error
+		minimum, err = minimum.Add(*groupMin)
+		if err != nil {
+			return models.THBAmount{}, models.THBAmount{}, fmt.Errorf("%w: promotion %d minimum bundle price: %v", ErrPromotionPricingCorrupt, promotion.PromotionID, err)
+		}
+		maximum, err = maximum.Add(*groupMax)
+		if err != nil {
+			return models.THBAmount{}, models.THBAmount{}, fmt.Errorf("%w: promotion %d maximum bundle price: %v", ErrPromotionPricingCorrupt, promotion.PromotionID, err)
+		}
+	}
+
+	return minimum, maximum, nil
 }

@@ -306,28 +306,52 @@ func pricingPromotionsFromHydrated(promotions []models.ProjectPromotion) []model
 	converted := make([]models.PricingPromotion, len(promotions))
 
 	for promotionIndex, promotion := range promotions {
-		items := make([]models.PricingPromotionItem, len(promotion.Items))
-		for itemIndex, item := range promotion.Items {
-			var variantID *int64
-			if item.VariantID != nil {
-				value := *item.VariantID
-				variantID = &value
+		hydratedGroups := promotion.ItemGroups
+		legacyItems := len(hydratedGroups) == 0 && len(promotion.Items) > 0
+		if len(hydratedGroups) == 0 && len(promotion.Items) > 0 {
+			hydratedGroups = make([]models.ProjectPromotionItemGroup, len(promotion.Items))
+			for index, item := range promotion.Items {
+				hydratedGroups[index] = models.ProjectPromotionItemGroup{Options: []models.ProjectPromotionItem{item}}
 			}
+		}
+		groups := make([]models.PricingPromotionItemGroup, len(hydratedGroups))
+		for groupIndex, group := range hydratedGroups {
+			options := make([]models.PricingPromotionItem, len(group.Options))
+			for optionIndex, item := range group.Options {
+				var variantID *int64
+				if item.VariantID != nil {
+					value := *item.VariantID
+					variantID = &value
+				}
 
-			items[itemIndex] = models.PricingPromotionItem{
-				ProductID: item.ProductID,
-				VariantID: variantID,
-				Quantity:  item.Quantity,
+				options[optionIndex] = models.PricingPromotionItem{
+					ProductID: item.ProductID,
+					VariantID: variantID,
+					Quantity:  item.Quantity,
+				}
 			}
+			groups[groupIndex] = models.PricingPromotionItemGroup{Options: options}
 		}
 
 		converted[promotionIndex] = models.PricingPromotion{
 			PromotionID:    promotion.PromotionID,
 			Name:           promotion.Name,
 			PromotionPrice: promotion.PromotionPrice,
-			Items:          items,
+		}
+		if legacyItems {
+			converted[promotionIndex].Items = flattenPricingPromotionGroups(groups)
+		} else {
+			converted[promotionIndex].ItemGroups = groups
 		}
 	}
 
 	return converted
+}
+
+func flattenPricingPromotionGroups(groups []models.PricingPromotionItemGroup) []models.PricingPromotionItem {
+	items := make([]models.PricingPromotionItem, 0)
+	for _, group := range groups {
+		items = append(items, group.Options...)
+	}
+	return items
 }

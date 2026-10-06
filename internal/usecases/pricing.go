@@ -25,8 +25,8 @@ var (
 	ErrPricingInvalidPromotion = errors.New("invalid pricing Promotion")
 	// ErrPricingDuplicatePromotion reports repeated Promotion IDs.
 	ErrPricingDuplicatePromotion = errors.New("duplicate pricing Promotion")
-	// ErrPricingDuplicatePromotionItem reports repeated identities inside one
-	// Promotion.
+	// ErrPricingDuplicatePromotionItem reports repeated identities anywhere
+	// inside one Promotion's item groups.
 	ErrPricingDuplicatePromotionItem = errors.New("duplicate pricing Promotion item")
 )
 
@@ -140,26 +140,41 @@ func validatePricingPromotions(promotions []models.PricingPromotion) error {
 		}
 		seenPromotionIDs[promotion.PromotionID] = struct{}{}
 
-		if len(promotion.Items) == 0 {
-			return fmt.Errorf("%w: Promotion %d has no items", ErrPricingInvalidPromotion, promotion.PromotionID)
+		groups := pricingPromotionGroups(promotion)
+		if len(groups) == 0 {
+			return fmt.Errorf("%w: Promotion %d has no item groups", ErrPricingInvalidPromotion, promotion.PromotionID)
 		}
 
-		seenItems := make(map[pricingItemKey]struct{}, len(promotion.Items))
-
-		for itemIndex, item := range promotion.Items {
-			if item.ProductID <= 0 || (item.VariantID != nil && *item.VariantID <= 0) || item.Quantity <= 0 {
-				return fmt.Errorf("%w: Promotion %d item %d has an invalid identity or quantity", ErrPricingInvalidPromotion, promotion.PromotionID, itemIndex+1)
+		seenItems := make(map[pricingItemKey]struct{})
+		for groupIndex, group := range groups {
+			if len(group.Options) == 0 {
+				return fmt.Errorf("%w: Promotion %d group %d has no options", ErrPricingInvalidPromotion, promotion.PromotionID, groupIndex+1)
 			}
-
-			key := newPricingItemKey(item.ProductID, item.VariantID)
-			if _, exists := seenItems[key]; exists {
-				return fmt.Errorf("%w: Promotion %d repeats product %d", ErrPricingDuplicatePromotionItem, promotion.PromotionID, item.ProductID)
+			for optionIndex, item := range group.Options {
+				if item.ProductID <= 0 || (item.VariantID != nil && *item.VariantID <= 0) || item.Quantity <= 0 {
+					return fmt.Errorf("%w: Promotion %d group %d option %d has an invalid identity or quantity", ErrPricingInvalidPromotion, promotion.PromotionID, groupIndex+1, optionIndex+1)
+				}
+				key := newPricingItemKey(item.ProductID, item.VariantID)
+				if _, exists := seenItems[key]; exists {
+					return fmt.Errorf("%w: Promotion %d repeats product %d", ErrPricingDuplicatePromotionItem, promotion.PromotionID, item.ProductID)
+				}
+				seenItems[key] = struct{}{}
 			}
-			seenItems[key] = struct{}{}
 		}
 	}
 
 	return nil
+}
+
+func pricingPromotionGroups(promotion models.PricingPromotion) []models.PricingPromotionItemGroup {
+	if len(promotion.ItemGroups) > 0 {
+		return promotion.ItemGroups
+	}
+	groups := make([]models.PricingPromotionItemGroup, len(promotion.Items))
+	for index, item := range promotion.Items {
+		groups[index] = models.PricingPromotionItemGroup{Options: []models.PricingPromotionItem{item}}
+	}
+	return groups
 }
 
 func calculatePricingSubtotal(cart []models.PricingCartLine) (models.THBAmount, error) {
@@ -188,22 +203,28 @@ type pricingCandidate struct {
 }
 
 func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCartLine, promotion models.PricingPromotion) (pricingCandidate, bool, error) {
-	for _, item := range promotion.Items {
-		line, exists := cartByIdentity[newPricingItemKey(item.ProductID, item.VariantID)]
-		if !exists || line.Quantity < item.Quantity {
+	var bundlePrice models.THBAmount
+	for groupIndex, group := range pricingPromotionGroups(promotion) {
+		var bestOption *models.THBAmount
+		for optionIndex, option := range group.Options {
+			line, exists := cartByIdentity[newPricingItemKey(option.ProductID, option.VariantID)]
+			if !exists || line.Quantity < option.Quantity {
+				continue
+			}
+			lineTotal, err := line.UnitPrice.Mul(int64(option.Quantity))
+			if err != nil {
+				return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d group %d option %d bundle total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, groupIndex+1, optionIndex+1, err)
+			}
+			if bestOption == nil || lineTotal.GreaterThan(*bestOption) {
+				choice := lineTotal
+				bestOption = &choice
+			}
+		}
+		if bestOption == nil {
 			return pricingCandidate{}, false, nil
 		}
-	}
-
-	var bundlePrice models.THBAmount
-
-	for itemIndex, item := range promotion.Items {
-		line := cartByIdentity[newPricingItemKey(item.ProductID, item.VariantID)]
-		lineTotal, err := line.UnitPrice.Mul(int64(item.Quantity))
-		if err != nil {
-			return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d item %d bundle total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, itemIndex+1, err)
-		}
-		bundlePrice, err = bundlePrice.Add(lineTotal)
+		var err error
+		bundlePrice, err = bundlePrice.Add(*bestOption)
 		if err != nil {
 			return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d bundle total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, err)
 		}

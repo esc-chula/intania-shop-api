@@ -88,49 +88,73 @@ func validatePromotionMutation(input models.ProjectPromotionMutationRequest) (mo
 		return models.ProjectPromotionMutation{}, PromotionValidationError{Message: "Promotion price is required"}
 	}
 
-	if len(input.Items) == 0 {
-		return models.ProjectPromotionMutation{}, PromotionValidationError{Message: "Promotion must contain at least one item"}
+	groupsInput := input.ItemGroups
+	// Items is never populated by JSON decoding. Retain this small internal
+	// compatibility path for callers that construct the Go request directly.
+	if len(groupsInput) == 0 && len(input.Items) > 0 {
+		groupsInput = make([]models.ProjectPromotionItemGroupInput, len(input.Items))
+		for index, item := range input.Items {
+			groupsInput[index] = models.ProjectPromotionItemGroupInput{Options: []models.ProjectPromotionItemInput{item}}
+		}
+	}
+	if len(groupsInput) == 0 {
+		return models.ProjectPromotionMutation{}, PromotionValidationError{Message: "Promotion must contain at least one item group"}
 	}
 
-	items := make([]models.ProjectPromotionItemInput, len(input.Items))
-	copy(items, input.Items)
-
-	seen := make(map[promotionItemKey]struct{}, len(items))
-
-	for index, item := range items {
-		if item.ProductID <= 0 {
+	groups := make([]models.ProjectPromotionItemGroupInput, len(groupsInput))
+	seen := make(map[promotionItemKey]struct{})
+	itemNumber := 0
+	for groupIndex, inputGroup := range groupsInput {
+		if len(inputGroup.Options) == 0 {
 			return models.ProjectPromotionMutation{}, PromotionValidationError{
-				Message: fmt.Sprintf("Promotion item %d product ID must be positive", index+1),
+				Message: fmt.Sprintf("Promotion item group %d must contain at least one option", groupIndex+1),
 			}
 		}
 
-		if item.VariantID != nil && *item.VariantID <= 0 {
-			return models.ProjectPromotionMutation{}, PromotionValidationError{
-				Message: fmt.Sprintf("Promotion item %d variant ID must be positive", index+1),
+		groups[groupIndex].Options = make([]models.ProjectPromotionItemInput, len(inputGroup.Options))
+		copy(groups[groupIndex].Options, inputGroup.Options)
+		for _, item := range groups[groupIndex].Options {
+			itemNumber++
+			if item.ProductID <= 0 {
+				return models.ProjectPromotionMutation{}, PromotionValidationError{
+					Message: fmt.Sprintf("Promotion option %d product ID must be positive", itemNumber),
+				}
 			}
-		}
-
-		if item.Quantity <= 0 {
-			return models.ProjectPromotionMutation{}, PromotionValidationError{
-				Message: fmt.Sprintf("Promotion item %d quantity must be positive", index+1),
+			if item.VariantID != nil && *item.VariantID <= 0 {
+				return models.ProjectPromotionMutation{}, PromotionValidationError{
+					Message: fmt.Sprintf("Promotion option %d variant ID must be positive", itemNumber),
+				}
 			}
-		}
-
-		key := newPromotionItemKey(item.ProductID, item.VariantID)
-		if _, exists := seen[key]; exists {
-			return models.ProjectPromotionMutation{}, PromotionValidationError{
-				Message: fmt.Sprintf("Promotion items must not contain duplicate product/variant reference at item %d", index+1),
+			if item.Quantity <= 0 {
+				return models.ProjectPromotionMutation{}, PromotionValidationError{
+					Message: fmt.Sprintf("Promotion option %d quantity must be positive", itemNumber),
+				}
 			}
-		}
 
-		seen[key] = struct{}{}
+			key := newPromotionItemKey(item.ProductID, item.VariantID)
+			if _, exists := seen[key]; exists {
+				return models.ProjectPromotionMutation{}, PromotionValidationError{
+					Message: fmt.Sprintf("Promotion options must not contain duplicate product/variant reference at option %d", itemNumber),
+				}
+			}
+			seen[key] = struct{}{}
+		}
 	}
 
 	return models.ProjectPromotionMutation{
 		Name:           name,
 		PromotionPrice: *input.PromotionPrice,
-		Items:          items,
+		ItemGroups:     groups,
+		Items:          flattenPromotionItemGroups(groups),
 	}, nil
+}
+
+func flattenPromotionItemGroups(groups []models.ProjectPromotionItemGroupInput) []models.ProjectPromotionItemInput {
+	items := make([]models.ProjectPromotionItemInput, 0)
+	for _, group := range groups {
+		items = append(items, group.Options...)
+	}
+	return items
 }
 
 type promotionItemKey struct {
