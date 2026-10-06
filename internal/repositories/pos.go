@@ -342,6 +342,7 @@ func pricingPromotionsFromHydrated(promotions []models.ProjectPromotion) []model
 			converted[promotionIndex].Items = flattenPricingPromotionGroups(groups)
 		} else {
 			converted[promotionIndex].ItemGroups = groups
+			converted[promotionIndex].Items = flattenPricingPromotionGroups(groups)
 		}
 	}
 

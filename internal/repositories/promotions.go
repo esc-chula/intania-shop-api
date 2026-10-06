@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -557,9 +558,27 @@ func calculatePromotionTotals(promotions []models.ProjectPromotion) error {
 		promotions[index].DiscountMax = discountMax
 		promotions[index].OriginalBundlePrice = minimum
 		promotions[index].Discount = discountMin
+		promotions[index].Items = promotionCompatibilityItems(promotions[index].ItemGroups)
 	}
 
 	return nil
+}
+
+func promotionCompatibilityItems(groups []models.ProjectPromotionItemGroup) []models.ProjectPromotionItem {
+	items := make([]models.ProjectPromotionItem, 0)
+	for _, group := range groups {
+		items = append(items, group.Options...)
+	}
+	sort.SliceStable(items, func(left, right int) bool {
+		if items[left].ProductID != items[right].ProductID {
+			return items[left].ProductID < items[right].ProductID
+		}
+		if items[left].VariantID == nil || items[right].VariantID == nil {
+			return items[left].VariantID == nil && items[right].VariantID != nil
+		}
+		return *items[left].VariantID < *items[right].VariantID
+	})
+	return items
 }
 
 func calculatePromotionBundlePriceRange(promotion models.ProjectPromotion) (models.THBAmount, models.THBAmount, error) {
