@@ -46,6 +46,7 @@ Replace these values in `production.tfvars`:
 | --- | --- |
 | `sql_tier` | This creates the paid Cloud SQL machine. The example is a modest 1 vCPU / 3.75 GB baseline, not a free-tier setting. |
 | `cors_allowed_origins` | Only the real HTTPS frontend origins should call this API from a browser. |
+| `frontend_callback_url` | Exact frontend route that receives the short-lived OAuth code, for example `https://app.example.com/auth/callback`. It must be one of the allowed frontend origins. |
 | `google_redirect_url` | For the initial bootstrap use the HTTPS placeholder in the example. The final value must exactly match an authorized redirect URI in the Google OAuth client. |
 
 ## 3. Connect GitHub to Cloud Build
@@ -125,9 +126,14 @@ Terraform variables.
    deploys Cloud Run, then calls `/health`.
 5. Copy the resulting Cloud Run service URL, update
    `google_redirect_url` to `https://SERVICE_URL/auth/google/callback`, add
-   that exact URI to the OAuth client's **Authorized redirect URIs**, then run
-   `terraform apply -var-file=production.tfvars` again. Push and approve the
-   next version tag. Google login is ready only after this second release.
+   that exact URI to the OAuth client's **Authorized redirect URIs**, and set
+   `frontend_callback_url` to the real frontend route that reads `?code=...`.
+   Run `terraform apply -var-file=production.tfvars` again. Push and approve
+   the next version tag. Google login is ready only after this second release.
+
+The frontend callback must immediately `POST /auth/exchange` with JSON
+`{"code":"..."}`. The code is stored only as a hash, expires after five
+minutes, and can be exchanged once; the API response contains the JWT and user.
 
 Cloud Run is public at the platform layer for OAuth callbacks. API access still
 uses the application's JWT and ADMIN authorization; do not make the uploads

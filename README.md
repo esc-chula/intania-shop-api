@@ -20,7 +20,7 @@ Copy the example and configure local credentials:
 cp .env.example .env
 ```
 
-Required settings are `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URL`, and `GCS_BUCKET`. Local Google Cloud authentication may use `GOOGLE_APPLICATION_CREDENTIALS`; deployed environments should use an attached service account.
+Required settings are `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URL`, `FRONTEND_CALLBACK_URL`, and `GCS_BUCKET`. Local Google Cloud authentication may use `GOOGLE_APPLICATION_CREDENTIALS`; deployed environments should use an attached service account.
 
 The server validates required configuration at startup. `make run`, `make migrate`, and Air load `.env`; raw Go commands require exported environment variables.
 
@@ -73,7 +73,7 @@ Google OAuth is the only account creation and login flow. Open:
 http://localhost:8080/auth/google/redirect
 ```
 
-After Google sign-in, the callback returns a JWT. Send it as:
+After Google sign-in, the callback redirects to `FRONTEND_CALLBACK_URL` with a short-lived, single-use `code` query parameter. The frontend must immediately exchange that code with the API to receive a JWT. Send the returned JWT as:
 
 ```http
 Authorization: Bearer <token>
@@ -93,7 +93,8 @@ New accounts have the `USER` role unless promoted to `ADMIN`. Only administrator
 | `GET` | `/docs` | Interactive API reference |
 | `GET` | `/auth/google` | Create an OAuth authorization URL |
 | `GET` | `/auth/google/redirect` | Redirect to Google OAuth |
-| `GET` | `/auth/google/callback` | Complete OAuth and return a JWT |
+| `GET` | `/auth/google/callback` | Complete OAuth and redirect to the configured frontend callback with a one-time code |
+| `POST` | `/auth/exchange` | Exchange a one-time login code for a JWT |
 
 ### Admin products and variants
 

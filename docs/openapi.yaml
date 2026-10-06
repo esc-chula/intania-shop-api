@@ -98,18 +98,38 @@ paths:
     get:
       operationId: completeGoogleOAuth
       tags: [Authentication]
-      summary: Complete Google OAuth and issue a JWT
+      summary: Complete Google OAuth and redirect to the frontend callback
+      description: Creates a short-lived, single-use login code and redirects to the configured frontend callback URL with `?code=...`. It never puts the JWT in the URL. OAuth failures redirect to the same callback with `?error=...`.
       parameters:
         - { name: code, in: query, schema: { type: string }, description: Required on a successful callback }
         - { name: state, in: query, schema: { type: string }, description: Required on a successful callback }
         - { name: error, in: query, schema: { type: string } }
         - { name: error_description, in: query, schema: { type: string } }
       responses:
+        "303":
+          description: Redirect to the configured frontend callback URL with either a login code or an OAuth error.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+  /auth/exchange:
+    post:
+      operationId: exchangeOAuthLoginCode
+      tags: [Authentication]
+      summary: Exchange a one-time OAuth login code for a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, description: Short-lived code returned to the frontend callback after Google sign-in. }
+      responses:
         "200": { $ref: "#/components/responses/Login" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
-        "502": { $ref: "#/components/responses/Error" }
   /products:
     get:
       operationId: listProducts
