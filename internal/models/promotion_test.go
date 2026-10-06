@@ -15,11 +15,11 @@ func TestProjectPromotionMutationRequestJSONUsesPublicReferences(t *testing.T) {
 	request := ProjectPromotionMutationRequest{
 		Name:           "Shirt and pin set",
 		PromotionPrice: &price,
-		Items: []ProjectPromotionItemInput{{
+		ItemGroups: []ProjectPromotionItemGroupInput{{Options: []ProjectPromotionItemInput{{
 			ProductID: 10,
 			VariantID: nil,
 			Quantity:  2,
-		}},
+		}}}},
 	}
 
 	encoded, err := json.Marshal(request)
@@ -46,21 +46,21 @@ func TestProjectPromotionMutationRequestJSONUsesPublicReferences(t *testing.T) {
 	if decoded.PromotionPrice == nil || decoded.PromotionPrice.String() != price.String() {
 		t.Fatalf("decoded promotion price=%v", decoded.PromotionPrice)
 	}
-	if decoded.Items == nil || len(decoded.Items) != 1 {
-		t.Fatalf("decoded items=%v", decoded.Items)
+	if decoded.ItemGroups == nil || len(decoded.ItemGroups) != 1 || len(decoded.ItemGroups[0].Options) != 1 {
+		t.Fatalf("decoded item_groups=%v", decoded.ItemGroups)
 	}
-	if item := decoded.Items[0]; item.ProductID != request.Items[0].ProductID || item.VariantID != nil || item.Quantity != request.Items[0].Quantity {
+	if item := decoded.ItemGroups[0].Options[0]; item.ProductID != request.ItemGroups[0].Options[0].ProductID || item.VariantID != nil || item.Quantity != request.ItemGroups[0].Options[0].Quantity {
 		t.Fatalf("decoded item=%+v", item)
 	}
 }
 
-func TestProjectPromotionMutationRequestMissingItemsDecodesToNilSlice(t *testing.T) {
+func TestProjectPromotionMutationRequestMissingGroupsDecodesToNilSlice(t *testing.T) {
 	var request ProjectPromotionMutationRequest
 	if err := json.Unmarshal([]byte(`{"name":"Navy","promotion_price":"0.00"}`), &request); err != nil {
 		t.Fatal(err)
 	}
-	if request.Items != nil {
-		t.Fatalf("missing items should decode to a nil slice: %#v", request.Items)
+	if request.ItemGroups != nil {
+		t.Fatalf("missing item_groups should decode to a nil slice: %#v", request.ItemGroups)
 	}
 	if request.Name != "Navy" || request.PromotionPrice == nil || request.PromotionPrice.String() != "0.00" {
 		t.Fatalf("decoded request=%+v", request)
@@ -94,15 +94,17 @@ func TestProjectPromotionResponseJSONMatchesOpenAPIShape(t *testing.T) {
 	}
 	name := "Navy"
 	promotion := ProjectPromotion{
-		PromotionID:         3,
-		ProjectID:           7,
-		Name:                "Shirt and pin set",
-		Items:               []ProjectPromotionItem{{ProductID: 10, Quantity: 1, ProductName: "Intania Shirt", Size: &name, UnitPrice: price}},
-		OriginalBundlePrice: price,
-		PromotionPrice:      price,
-		Discount:            discount,
-		CreatedAt:           time.Date(2026, time.August, 26, 4, 0, 0, 0, time.UTC),
-		UpdatedAt:           time.Date(2026, time.August, 26, 4, 0, 0, 0, time.UTC),
+		PromotionID:            3,
+		ProjectID:              7,
+		Name:                   "Shirt and pin set",
+		ItemGroups:             []ProjectPromotionItemGroup{{Options: []ProjectPromotionItem{{ProductID: 10, Quantity: 1, ProductName: "Intania Shirt", Size: &name, UnitPrice: price}}}},
+		OriginalBundlePriceMin: price,
+		OriginalBundlePriceMax: price,
+		PromotionPrice:         price,
+		DiscountMin:            discount,
+		DiscountMax:            discount,
+		CreatedAt:              time.Date(2026, time.August, 26, 4, 0, 0, 0, time.UTC),
+		UpdatedAt:              time.Date(2026, time.August, 26, 4, 0, 0, 0, time.UTC),
 	}
 	response := ProjectPromotionEnvelope{Success: true, Data: promotion}
 
@@ -111,7 +113,7 @@ func TestProjectPromotionResponseJSONMatchesOpenAPIShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	value := string(encoded)
-	for _, want := range []string{`"success":true`, `"promotion_id":3`, `"project_id":7`, `"unit_price":"299.00"`, `"original_bundle_price":"299.00"`, `"promotion_price":"299.00"`, `"discount":"29.00"`} {
+	for _, want := range []string{`"success":true`, `"promotion_id":3`, `"project_id":7`, `"item_groups"`, `"unit_price":"299.00"`, `"original_bundle_price_min":"299.00"`, `"original_bundle_price_max":"299.00"`, `"promotion_price":"299.00"`, `"discount_min":"29.00"`, `"discount_max":"29.00"`} {
 		if !strings.Contains(value, want) {
 			t.Errorf("encoded response %s does not contain %s", value, want)
 		}

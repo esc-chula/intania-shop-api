@@ -21,15 +21,24 @@ type ProjectPromotionItemInput struct {
 	Quantity  int32  `json:"quantity"`
 }
 
+// ProjectPromotionItemGroupInput contains alternatives for one required part
+// of a Promotion. Exactly one option from every group must be present in a
+// Cart for the Promotion to apply.
+type ProjectPromotionItemGroupInput struct {
+	Options []ProjectPromotionItemInput `json:"options"`
+}
+
 // ProjectPromotionMutationRequest is the public create and full-replacement
 // payload for a project promotion. PromotionPrice uses a pointer because zero
 // is valid and service validation must distinguish an omitted field from
-// "0.00". Items uses a plain slice, with nil or empty values rejected by
-// validation.
+// "0.00".
 type ProjectPromotionMutationRequest struct {
-	Name           string                      `json:"name"`
-	PromotionPrice *THBAmount                  `json:"promotion_price"`
-	Items          []ProjectPromotionItemInput `json:"items"`
+	Name           string                           `json:"name"`
+	PromotionPrice *THBAmount                       `json:"promotion_price"`
+	ItemGroups     []ProjectPromotionItemGroupInput `json:"item_groups"`
+	// Items is retained only for in-process callers during the transition. It
+	// is deliberately excluded from JSON, so the public API rejects it.
+	Items []ProjectPromotionItemInput `json:"-"`
 }
 
 // ProjectPromotionMutation is the validated, non-JSON application command
@@ -38,7 +47,9 @@ type ProjectPromotionMutationRequest struct {
 type ProjectPromotionMutation struct {
 	Name           string
 	PromotionPrice THBAmount
-	Items          []ProjectPromotionItemInput
+	ItemGroups     []ProjectPromotionItemGroupInput
+	// Items is a non-JSON compatibility projection for internal callers.
+	Items []ProjectPromotionItemInput
 }
 
 // ProjectPromotionItem is an enriched promotion item returned by the API.
@@ -54,17 +65,29 @@ type ProjectPromotionItem struct {
 	UnitPrice   THBAmount `json:"unit_price"`
 }
 
+// ProjectPromotionItemGroup is an enriched required group. Options are ORed
+// within the group while groups themselves are ANDed together.
+type ProjectPromotionItemGroup struct {
+	Options []ProjectPromotionItem `json:"options"`
+}
+
 // ProjectPromotion is the hydrated project-scoped promotion response.
 type ProjectPromotion struct {
-	PromotionID         int64                  `json:"promotion_id"`
-	ProjectID           int64                  `json:"project_id"`
-	Name                string                 `json:"name"`
-	Items               []ProjectPromotionItem `json:"items"`
-	OriginalBundlePrice THBAmount              `json:"original_bundle_price"`
-	PromotionPrice      THBAmount              `json:"promotion_price"`
-	Discount            THBAmount              `json:"discount"`
-	CreatedAt           time.Time              `json:"created_at"`
-	UpdatedAt           time.Time              `json:"updated_at"`
+	PromotionID int64                       `json:"promotion_id"`
+	ProjectID   int64                       `json:"project_id"`
+	Name        string                      `json:"name"`
+	ItemGroups  []ProjectPromotionItemGroup `json:"item_groups"`
+	// Deprecated non-JSON flattened projection for internal callers.
+	Items                  []ProjectPromotionItem `json:"-"`
+	OriginalBundlePriceMin THBAmount              `json:"original_bundle_price_min"`
+	OriginalBundlePriceMax THBAmount              `json:"original_bundle_price_max"`
+	PromotionPrice         THBAmount              `json:"promotion_price"`
+	DiscountMin            THBAmount              `json:"discount_min"`
+	DiscountMax            THBAmount              `json:"discount_max"`
+	OriginalBundlePrice    THBAmount              `json:"-"`
+	Discount               THBAmount              `json:"-"`
+	CreatedAt              time.Time              `json:"created_at"`
+	UpdatedAt              time.Time              `json:"updated_at"`
 }
 
 // ProjectPromotionListData is the unpaginated project-scoped list payload.

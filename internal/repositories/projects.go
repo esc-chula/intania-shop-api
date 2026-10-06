@@ -457,6 +457,7 @@ func validatePromotionPricesForReplacement(
 			p.promotion_price::text,
 			pi.project_product_id,
 			pi.required_quantity,
+			pi.group_index,
 			pp.project_price::text
 		FROM affected_promotions ap
 		JOIN promotions p
@@ -491,6 +492,7 @@ func validatePromotionPricesForReplacement(
 			promotionPriceRaw string
 			projectProductID  int64
 			requiredQuantity  int32
+			groupIndex        int32
 			projectPriceRaw   string
 		)
 
@@ -499,6 +501,7 @@ func validatePromotionPricesForReplacement(
 			&promotionPriceRaw,
 			&projectProductID,
 			&requiredQuantity,
+			&groupIndex,
 			&projectPriceRaw,
 		); err != nil {
 			return fmt.Errorf(
@@ -552,20 +555,18 @@ func validatePromotionPricesForReplacement(
 			)
 		}
 
+		if groupIndex < 0 {
+			return fmt.Errorf("%w: promotion %d has invalid group %d", ErrPromotionPricingCorrupt, promotionID, groupIndex)
+		}
+
 		total, exists := totals[promotionID]
 		if !exists {
 			total.promotionPrice = promotionPrice
+			total.groupMinimums = make(map[int32]models.THBAmount)
 			orderedPromotionIDs = append(orderedPromotionIDs, promotionID)
 		}
-
-		total.bundlePrice, err = total.bundlePrice.Add(lineTotal)
-		if err != nil {
-			return fmt.Errorf(
-				"%w: promotion %d bundle price: %w",
-				ErrPromotionPricingCorrupt,
-				promotionID,
-				err,
-			)
+		if current, exists := total.groupMinimums[groupIndex]; !exists || lineTotal.Satang() < current.Satang() {
+			total.groupMinimums[groupIndex] = lineTotal
 		}
 
 		totals[promotionID] = total
@@ -582,8 +583,16 @@ func validatePromotionPricesForReplacement(
 	// validation errors deterministic.
 	for _, promotionID := range orderedPromotionIDs {
 		total := totals[promotionID]
+		var minimumBundlePrice models.THBAmount
+		for _, minimum := range total.groupMinimums {
+			var err error
+			minimumBundlePrice, err = minimumBundlePrice.Add(minimum)
+			if err != nil {
+				return fmt.Errorf("%w: promotion %d minimum bundle price: %w", ErrPromotionPricingCorrupt, promotionID, err)
+			}
+		}
 
-		if total.promotionPrice.GreaterThan(total.bundlePrice) {
+		if total.promotionPrice.GreaterThan(minimumBundlePrice) {
 			return fmt.Errorf(
 				"%w: promotion %d price exceeds recalculated bundle price",
 				ErrProjectProductPromotionPrice,
@@ -597,7 +606,7 @@ func validatePromotionPricesForReplacement(
 
 type promotionReplacementTotal struct {
 	promotionPrice models.THBAmount
-	bundlePrice    models.THBAmount
+	groupMinimums  map[int32]models.THBAmount
 }
 
 func changedPromotionProjectProductPrices(

@@ -144,6 +144,61 @@ func TestPricingServiceMatchesRequiredQuantitiesAndVariantIdentity(t *testing.T)
 	assertPricingAmount(t, result.Discount, "5.00")
 }
 
+func TestPricingServiceMatchesORGroupsAndSelectsHighestEligibleOption(t *testing.T) {
+	largeID := int64(22)
+	xlargeID := int64(23)
+	result, err := NewPricingService().Calculate(
+		[]models.PricingCartLine{
+			{ProductID: 10, VariantID: &largeID, Quantity: 1, UnitPrice: pricingTestAmount(t, "300.00")},
+			{ProductID: 10, VariantID: &xlargeID, Quantity: 1, UnitPrice: pricingTestAmount(t, "350.00")},
+			{ProductID: 11, Quantity: 1, UnitPrice: pricingTestAmount(t, "50.00")},
+		},
+		[]models.PricingPromotion{{
+			PromotionID:    1,
+			Name:           "Shirt or shirt plus pin",
+			PromotionPrice: pricingTestAmount(t, "300.00"),
+			ItemGroups: []models.PricingPromotionItemGroup{
+				{Options: []models.PricingPromotionItem{
+					{ProductID: 10, VariantID: &largeID, Quantity: 1},
+					{ProductID: 10, VariantID: &xlargeID, Quantity: 1},
+				}},
+				{Options: []models.PricingPromotionItem{{ProductID: 11, Quantity: 1}}},
+			},
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AppliedPromotion == nil {
+		t.Fatal("AppliedPromotion is nil")
+	}
+	assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, "400.00")
+	assertPricingAmount(t, result.Discount, "100.00")
+	assertPricingAmount(t, result.NetTotal, "600.00")
+}
+
+func TestPricingServiceRequiresEveryORGroup(t *testing.T) {
+	largeID := int64(22)
+	xlargeID := int64(23)
+	result, err := NewPricingService().Calculate(
+		[]models.PricingCartLine{{ProductID: 10, VariantID: &largeID, Quantity: 1, UnitPrice: pricingTestAmount(t, "300.00")}},
+		[]models.PricingPromotion{{
+			PromotionID:    1,
+			PromotionPrice: pricingTestAmount(t, "250.00"),
+			ItemGroups: []models.PricingPromotionItemGroup{
+				{Options: []models.PricingPromotionItem{{ProductID: 10, VariantID: &largeID, Quantity: 1}, {ProductID: 10, VariantID: &xlargeID, Quantity: 1}}},
+				{Options: []models.PricingPromotionItem{{ProductID: 11, Quantity: 1}}},
+			},
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AppliedPromotion != nil {
+		t.Fatalf("AppliedPromotion = %+v, want nil", result.AppliedPromotion)
+	}
+}
+
 func TestPricingServiceSelectsEligibleZeroDiscountPromotion(t *testing.T) {
 	result, err := NewPricingService().Calculate(
 		[]models.PricingCartLine{{ProductID: 1, Quantity: 1, UnitPrice: pricingTestAmount(t, "10.00")}},

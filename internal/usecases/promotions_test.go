@@ -40,7 +40,7 @@ func TestValidatePromotionMutation(t *testing.T) {
 		{
 			name:        "missing items",
 			input:       models.ProjectPromotionMutationRequest{Name: "Bundle", PromotionPrice: &price},
-			wantMessage: "Promotion must contain at least one item",
+			wantMessage: "Promotion must contain at least one item group",
 		},
 		{
 			name: "non-positive product ID",
@@ -48,7 +48,7 @@ func TestValidatePromotionMutation(t *testing.T) {
 				Name: "Bundle", PromotionPrice: &price,
 				Items: []models.ProjectPromotionItemInput{{ProductID: 0, Quantity: 1}},
 			},
-			wantMessage: "Promotion item 1 product ID must be positive",
+			wantMessage: "Promotion option 1 product ID must be positive",
 		},
 		{
 			name: "non-positive variant ID",
@@ -56,7 +56,7 @@ func TestValidatePromotionMutation(t *testing.T) {
 				Name: "Bundle", PromotionPrice: &price,
 				Items: []models.ProjectPromotionItemInput{{ProductID: 1, VariantID: testInt64Pointer(0), Quantity: 1}},
 			},
-			wantMessage: "Promotion item 1 variant ID must be positive",
+			wantMessage: "Promotion option 1 variant ID must be positive",
 		},
 		{
 			name: "non-positive quantity",
@@ -64,7 +64,7 @@ func TestValidatePromotionMutation(t *testing.T) {
 				Name: "Bundle", PromotionPrice: &price,
 				Items: []models.ProjectPromotionItemInput{{ProductID: 1, Quantity: 0}},
 			},
-			wantMessage: "Promotion item 1 quantity must be positive",
+			wantMessage: "Promotion option 1 quantity must be positive",
 		},
 		{
 			name: "duplicate variantless item",
@@ -72,7 +72,7 @@ func TestValidatePromotionMutation(t *testing.T) {
 				Name: "Bundle", PromotionPrice: &price,
 				Items: []models.ProjectPromotionItemInput{{ProductID: 1, Quantity: 1}, {ProductID: 1, Quantity: 2}},
 			},
-			wantMessage: "Promotion items must not contain duplicate product/variant reference at item 2",
+			wantMessage: "Promotion options must not contain duplicate product/variant reference at option 2",
 		},
 		{
 			name: "duplicate variant item",
@@ -83,7 +83,7 @@ func TestValidatePromotionMutation(t *testing.T) {
 					{ProductID: 1, VariantID: &variantID, Quantity: 2},
 				},
 			},
-			wantMessage: "Promotion items must not contain duplicate product/variant reference at item 2",
+			wantMessage: "Promotion options must not contain duplicate product/variant reference at option 2",
 		},
 	}
 
@@ -123,6 +123,37 @@ func TestValidatePromotionMutationTrimsNameAndAllowsDistinctVariantReferences(t 
 	}
 	if mutation.PromotionPrice.String() != "10.00" || len(mutation.Items) != 2 {
 		t.Fatalf("validated mutation = %+v", mutation)
+	}
+}
+
+func TestValidatePromotionMutationAcceptsORGroupsAndRejectsCrossGroupDuplicate(t *testing.T) {
+	price := testPromotionAmount(t, "10.00")
+	variantID := int64(2)
+	mutation, err := validatePromotionMutation(models.ProjectPromotionMutationRequest{
+		Name:           " Shirt or pin ",
+		PromotionPrice: &price,
+		ItemGroups: []models.ProjectPromotionItemGroupInput{
+			{Options: []models.ProjectPromotionItemInput{{ProductID: 1, Quantity: 1}, {ProductID: 1, VariantID: &variantID, Quantity: 1}}},
+			{Options: []models.ProjectPromotionItemInput{{ProductID: 2, Quantity: 1}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutation.Name != "Shirt or pin" || len(mutation.ItemGroups) != 2 || len(mutation.ItemGroups[0].Options) != 2 {
+		t.Fatalf("validated mutation = %+v", mutation)
+	}
+
+	_, err = validatePromotionMutation(models.ProjectPromotionMutationRequest{
+		Name:           "Duplicate",
+		PromotionPrice: &price,
+		ItemGroups: []models.ProjectPromotionItemGroupInput{
+			{Options: []models.ProjectPromotionItemInput{{ProductID: 1, Quantity: 1}}},
+			{Options: []models.ProjectPromotionItemInput{{ProductID: 1, Quantity: 1}}},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate product/variant") {
+		t.Fatalf("duplicate cross-group error = %v", err)
 	}
 }
 

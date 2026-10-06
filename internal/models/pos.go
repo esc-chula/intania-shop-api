@@ -140,13 +140,22 @@ type PricingPromotionItem struct {
 	Quantity  int32
 }
 
+// PricingPromotionItemGroup contains interchangeable options for one
+// required Promotion group.
+type PricingPromotionItemGroup struct {
+	Options []PricingPromotionItem
+}
+
 // PricingPromotion is the minimal Promotion projection needed by the pure
 // Pricing service.
 type PricingPromotion struct {
 	PromotionID    int64
 	Name           string
 	PromotionPrice THBAmount
-	Items          []PricingPromotionItem
+	ItemGroups     []PricingPromotionItemGroup
+	// Items is retained for internal callers while the public Promotion API
+	// moves to ItemGroups. It is interpreted as one AND group per item.
+	Items []PricingPromotionItem
 }
 
 // PricingResult is the money-safe output of the reusable Pricing service.

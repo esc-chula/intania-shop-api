@@ -22,12 +22,13 @@ func (repository *PromotionRepository) Create(ctx context.Context, today models.
 		return models.ProjectPromotion{}, err
 	}
 
-	assignments, err := resolveProjectProducts(ctx, tx, projectID, mutation.Items, true)
+	references := flattenPromotionItemGroups(promotionMutationItemGroups(mutation))
+	assignments, err := resolveProjectProducts(ctx, tx, projectID, promotionItemInputs(references), true)
 	if err != nil {
 		return models.ProjectPromotion{}, err
 	}
 
-	if err := validatePromotionPrice(mutation, assignments); err != nil {
+	if err := validatePromotionGroupPrice(mutation, references, assignments); err != nil {
 		return models.ProjectPromotion{}, err
 	}
 
@@ -39,7 +40,7 @@ func (repository *PromotionRepository) Create(ctx context.Context, today models.
 		return models.ProjectPromotion{}, fmt.Errorf("insert promotion: %w", err)
 	}
 
-	if err := insertPromotionItems(ctx, tx, promotionID, projectID, mutation.Items, assignments); err != nil {
+	if err := insertPromotionItems(ctx, tx, promotionID, projectID, references, assignments); err != nil {
 		return models.ProjectPromotion{}, err
 	}
 
@@ -74,12 +75,13 @@ func (repository *PromotionRepository) Update(ctx context.Context, today models.
 		return models.ProjectPromotion{}, err
 	}
 
-	assignments, err := resolveProjectProducts(ctx, tx, projectID, mutation.Items, true)
+	references := flattenPromotionItemGroups(promotionMutationItemGroups(mutation))
+	assignments, err := resolveProjectProducts(ctx, tx, projectID, promotionItemInputs(references), true)
 	if err != nil {
 		return models.ProjectPromotion{}, err
 	}
 
-	if err := validatePromotionPrice(mutation, assignments); err != nil {
+	if err := validatePromotionGroupPrice(mutation, references, assignments); err != nil {
 		return models.ProjectPromotion{}, err
 	}
 
@@ -95,7 +97,7 @@ func (repository *PromotionRepository) Update(ctx context.Context, today models.
 		return models.ProjectPromotion{}, fmt.Errorf("replace promotion items: %w", err)
 	}
 
-	if err := insertPromotionItems(ctx, tx, promotionID, projectID, mutation.Items, assignments); err != nil {
+	if err := insertPromotionItems(ctx, tx, promotionID, projectID, references, assignments); err != nil {
 		return models.ProjectPromotion{}, err
 	}
 

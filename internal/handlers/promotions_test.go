@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-const validPromotionMutationJSON = `{"name":"Bundle","promotion_price":"10.00","items":[{"product_id":1,"quantity":1}]}`
+const validPromotionMutationJSON = `{"name":"Bundle","promotion_price":"10.00","item_groups":[{"options":[{"product_id":1,"quantity":1}]}]}`
 
 func TestPromotionHandlerReadRoutes(t *testing.T) {
 	t.Parallel()
@@ -71,10 +71,10 @@ func TestPromotionAdminHandlerRejectsMalformedMutationBodies(t *testing.T) {
 		name string
 		body string
 	}{
-		{name: "unknown field", body: `{"name":"Bundle","promotion_price":"10.00","items":[{"product_id":1,"quantity":1}],"unexpected":true}`},
+		{name: "unknown field", body: `{"name":"Bundle","promotion_price":"10.00","item_groups":[{"options":[{"product_id":1,"quantity":1]}],"unexpected":true}`},
 		{name: "trailing value", body: validPromotionMutationJSON + validPromotionMutationJSON},
-		{name: "numeric price", body: `{"name":"Bundle","promotion_price":10.00,"items":[{"product_id":1,"quantity":1}]}`},
-		{name: "malformed price", body: `{"name":"Bundle","promotion_price":"10","items":[{"product_id":1,"quantity":1}]}`},
+		{name: "numeric price", body: `{"name":"Bundle","promotion_price":10.00,"item_groups":[{"options":[{"product_id":1,"quantity":1}]}]}`},
+		{name: "malformed price", body: `{"name":"Bundle","promotion_price":"10","item_groups":[{"options":[{"product_id":1,"quantity":1}]}]}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -94,10 +94,21 @@ func TestPromotionAdminHandlerRejectsMalformedMutationBodies(t *testing.T) {
 	}
 }
 
+func TestPromotionAdminHandlerRejectsLegacyItemsPayload(t *testing.T) {
+	service := &promotionHTTPAdminStub{}
+	router := chi.NewRouter()
+	NewPromotionAdminHandler(service).Register(router)
+
+	response := servePromotionRequest(router, http.MethodPost, "/projects/3/promotions", `{"name":"Legacy","promotion_price":"10.00","items":[{"product_id":1,"quantity":1}]}`)
+	if response.Code != http.StatusBadRequest || service.createCalls != 0 {
+		t.Fatalf("status/calls = %d/%d, body = %s", response.Code, service.createCalls, response.Body.String())
+	}
+}
+
 func TestPromotionAdminHandlerRejectsOversizedMutationBody(t *testing.T) {
 	t.Parallel()
 
-	body := `{"name":"` + strings.Repeat("x", promotionBodyLimit) + `","promotion_price":"10.00","items":[{"product_id":1,"quantity":1}]}`
+	body := `{"name":"` + strings.Repeat("x", promotionBodyLimit) + `","promotion_price":"10.00","item_groups":[{"options":[{"product_id":1,"quantity":1}]}]}`
 	service := &promotionHTTPAdminStub{}
 	router := chi.NewRouter()
 	NewPromotionAdminHandler(service).Register(router)
