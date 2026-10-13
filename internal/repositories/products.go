@@ -11,7 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrProductNotFound = errors.New("product not found")
+var (
+	ErrProductNotFound = errors.New("product not found")
+	ErrVariantNotFound = errors.New("variant not found")
+	ErrProductInUse    = errors.New("product is in use by a current or upcoming project")
+	ErrProductArchived = errors.New("product is archived")
+)
 
 type ProductRepository struct{ pool *pgxpool.Pool }
 
@@ -20,7 +25,7 @@ func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
 }
 
 func (repository *ProductRepository) List(ctx context.Context, offset, limit int32) ([]models.ProductListItem, int64, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images FROM products ORDER BY id DESC OFFSET $1 LIMIT $2`, offset, limit)
+	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images FROM products WHERE deleted_at IS NULL ORDER BY id DESC OFFSET $1 LIMIT $2`, offset, limit)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list products: %w", err)
 	}
@@ -39,14 +44,14 @@ func (repository *ProductRepository) List(ctx context.Context, offset, limit int
 		return nil, 0, fmt.Errorf("iterate products: %w", err)
 	}
 	var total int64
-	if err := repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM products`).Scan(&total); err != nil {
+	if err := repository.pool.QueryRow(ctx, `SELECT COUNT(*) FROM products WHERE deleted_at IS NULL`).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count products: %w", err)
 	}
 	return items, total, nil
 }
 
 func (repository *ProductRepository) Search(ctx context.Context, query string, offset, limit int32) ([]models.ProductListItem, error) {
-	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images FROM products WHERE name ILIKE '%' || $1 || '%' ORDER BY id DESC OFFSET $2 LIMIT $3`, query, offset, limit)
+	rows, err := repository.pool.Query(ctx, `SELECT id, name, price::text, status::text, category, images FROM products WHERE deleted_at IS NULL AND name ILIKE '%' || $1 || '%' ORDER BY id DESC OFFSET $2 LIMIT $3`, query, offset, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search products: %w", err)
 	}
@@ -71,7 +76,7 @@ func (repository *ProductRepository) Detail(ctx context.Context, productID int64
 	var product models.ProductDetail
 	var status string
 	var productType *string
-	err := repository.pool.QueryRow(ctx, `SELECT id, name, description, price::text, status::text, category, stock_quantity, images, product_type::text, sku, product_code, created_at, updated_at FROM products WHERE id = $1`, productID).Scan(&product.ProductID, &product.Name, &product.Description, &product.BasePrice, &status, &product.Category, &product.StockQuantity, &product.Images, &productType, &product.SKU, &product.ProductCode, &product.CreatedAt, &product.UpdatedAt)
+	err := repository.pool.QueryRow(ctx, `SELECT id, name, description, price::text, status::text, category, stock_quantity, images, product_type::text, sku, product_code, created_at, updated_at FROM products WHERE id = $1 AND deleted_at IS NULL`, productID).Scan(&product.ProductID, &product.Name, &product.Description, &product.BasePrice, &status, &product.Category, &product.StockQuantity, &product.Images, &productType, &product.SKU, &product.ProductCode, &product.CreatedAt, &product.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.ProductDetail{}, ErrProductNotFound
 	}
