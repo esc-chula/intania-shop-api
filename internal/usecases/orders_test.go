@@ -50,7 +50,7 @@ func TestOrderServiceListDefaultsCreatedRangeToProjectStartInBangkok(t *testing.
 		t.Fatal(err)
 	}
 	store := &orderStoreStub{}
-	projects := &projectExistenceStoreStub{project: models.Project{StartDate: startDate, CreatedAt: startDate.Time.AddDate(0, 0, 1)}}
+	projects := &projectExistenceStoreStub{project: models.Project{StartDate: startDate, CreatedAt: startDate.AddDate(0, 0, 1)}}
 	service := NewOrderService(store, projects)
 	fixedNow := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return fixedNow }
