@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -186,15 +185,15 @@ func (repository *POSRepository) readCheckoutSnapshot(ctx context.Context, tx pg
 }
 
 // lockPOSProject holds a share lock for the rest of the checkout, so the
-// project dates and its product selection cannot be changed while the order is
+// project status, dates, and product selection cannot be changed while the order is
 // priced and written.
 func lockPOSProject(ctx context.Context, tx pgx.Tx, today models.Date, projectID int64) (models.ProjectStatus, error) {
-	var startDate, endDate time.Time
+	var status models.ProjectStatus
 	err := tx.QueryRow(ctx, `
-		SELECT start_date, end_date
-		FROM projects
-		WHERE project_id = $1
-		FOR SHARE`, projectID).Scan(&startDate, &endDate)
+		SELECT `+projectStatusExpression+`
+		FROM projects p
+		WHERE p.project_id = $2
+		FOR SHARE`, today.Time, projectID).Scan(&status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrProjectNotFound
 	}
@@ -202,7 +201,7 @@ func lockPOSProject(ctx context.Context, tx pgx.Tx, today models.Date, projectID
 		return "", fmt.Errorf("lock POS checkout project: %w", err)
 	}
 
-	return models.ProjectStatusFor(models.NewDate(startDate), models.NewDate(endDate), today), nil
+	return status, nil
 }
 
 // lockPOSStock locks every row whose stock the checkout reduces. Products are

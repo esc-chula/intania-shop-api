@@ -151,14 +151,13 @@ type promotionQueryer interface {
 }
 
 func lockProjectForMutation(ctx context.Context, tx pgx.Tx, today models.Date, projectID int64) error {
-	var lockedProjectID int64
-	var startDate, endDate time.Time
+	var status models.ProjectStatus
 
 	err := tx.QueryRow(ctx, `
-		SELECT project_id, start_date, end_date
-		FROM projects
-		WHERE project_id = $1
-		FOR UPDATE`, projectID).Scan(&lockedProjectID, &startDate, &endDate)
+		SELECT `+projectStatusExpression+`
+		FROM projects p
+		WHERE p.project_id = $2
+		FOR UPDATE`, today.Time, projectID).Scan(&status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrProjectNotFound
 	}
@@ -166,7 +165,6 @@ func lockProjectForMutation(ctx context.Context, tx pgx.Tx, today models.Date, p
 		return fmt.Errorf("lock project for promotion mutation: %w", err)
 	}
 
-	status := models.ProjectStatusFor(models.NewDate(startDate), models.NewDate(endDate), today)
 	if status == models.ProjectStatusCompleted {
 		return ErrProjectCompleted
 	}

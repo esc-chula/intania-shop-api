@@ -88,10 +88,10 @@ func (r *ProductRepository) Archive(ctx context.Context, today models.Date, prod
 		SELECT EXISTS (
 			SELECT 1
 			FROM project_products pp
-			JOIN projects project ON project.project_id = pp.project_id
-			WHERE pp.product_id = $1
-			  AND project.end_date >= $2::date
-		)`, productID, today.Time).Scan(&inUse)
+			JOIN projects p ON p.project_id = pp.project_id
+			WHERE pp.product_id = $2
+			  AND `+projectStatusExpression+` <> 'COMPLETED'
+		)`, today.Time, productID).Scan(&inUse)
 	if err != nil {
 		return fmt.Errorf("check product archive usage: %w", err)
 	}

@@ -139,7 +139,7 @@ func buildProjectFilter(name, status string) (models.ProjectFilter, error) {
 	return filter, nil
 }
 
-// Create persists a new project and returns it with its derived status.
+// Create persists a new project and returns it with its effective status.
 func (service *ProjectService) Create(ctx context.Context, input models.ProjectInput) (models.Project, error) {
 	validated, err := validateProjectInput(input)
 	if err != nil {
@@ -200,6 +200,11 @@ func validateProjectInput(input models.ProjectInput) (models.ProjectInput, error
 	}
 	if input.EndDate.Before(input.StartDate.Time) {
 		return models.ProjectInput{}, ProjectValidationError{Message: "Project end date must not be earlier than the start date"}
+	}
+	if input.StatusOverride != nil {
+		if _, err := models.ParseProjectStatus(string(*input.StatusOverride)); err != nil {
+			return models.ProjectInput{}, ProjectValidationError{Message: "Invalid project status override"}
+		}
 	}
 	return input, nil
 }

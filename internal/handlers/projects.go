@@ -93,8 +93,7 @@ func (handler *ProjectHandler) detail(writer http.ResponseWriter, request *http.
 	writeSuccess(writer, http.StatusOK, project)
 }
 
-// projectBodyLimit caps a project payload, which only ever carries a name, a
-// description, and two dates.
+// projectBodyLimit caps the small project configuration payload.
 const projectBodyLimit = 1 << 20
 
 func (handler *ProjectHandler) create(writer http.ResponseWriter, request *http.Request) {
@@ -243,7 +242,7 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 			"Project sale dates cannot exclude an existing order")
 	case errors.Is(err, repositories.ErrProjectArchivedProduct):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict,
-			"Project with archived products cannot be scheduled as current or upcoming")
+			"Project with archived products cannot become not started or active")
 	case errors.Is(err, repositories.ErrOrderNotFound):
 		writeProjectError(writer, request, http.StatusNotFound, models.ProjectErrorOrderNotFound, "Order not found")
 	case errors.Is(err, repositories.ErrProjectCompleted):
