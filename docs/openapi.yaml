@@ -215,8 +215,8 @@ paths:
         Admin only. This is a soft deletion: it sets the product's archive
         timestamp and does not delete product rows, variants, inventory
         transactions, order snapshots, or GCS image objects. A product
-        assigned to a current or upcoming project (derived from Bangkok's
-        date) is rejected with `409 PRODUCT_IN_USE`. Repeating DELETE for an
+        assigned to a project whose effective status is NOT_STARTED or ACTIVE
+        is rejected with `409 PRODUCT_IN_USE`. Repeating DELETE for an
         already archived product is idempotent and returns `204`.
       security: [{ bearerAuth: [] }]
       responses:
@@ -418,7 +418,7 @@ paths:
       operationId: updateProject
       tags: [Projects]
       summary: Update a project
-      description: Admin only. Every field is replaced, so an omitted `description` is cleared. Sale dates cannot be changed to exclude the Bangkok calendar date of any order the project already has (`409 PROJECT_CONFLICT`), or to make a project containing archived historical products current/upcoming.
+      description: Admin only. Every field is replaced, so an omitted `description` is cleared and an omitted or null `status_override` restores automatic status. Sale dates cannot be changed to exclude the Bangkok calendar date of any existing order (`409 PROJECT_CONFLICT`); unchanged dates permit status and metadata edits after sales outside the planned period. A project containing archived products cannot become NOT_STARTED or ACTIVE, including by clearing its override.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
       responses:
@@ -653,7 +653,7 @@ paths:
       operationId: listProjectPOSOrders
       tags: [Project Orders]
       summary: List project POS orders
-      description: Admin only. The default range starts at project start 00:00:00 Asia/Bangkok and ends at the current time.
+      description: Admin only. The default range starts at 00:00:00 Asia/Bangkok on the earlier of the project's start day and creation day, and ends at the current time. This includes sales before the planned start, even after a status override is cleared.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: order_number, in: query, schema: { type: string, maxLength: 100 } }
@@ -789,7 +789,7 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ProjectMutationRequest" }
-          example: { name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07" }
+          example: { name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status_override: ACTIVE }
     ReplaceProjectProducts:
       required: true
       content:
@@ -981,7 +981,11 @@ components:
     ProjectStatus:
       type: string
       enum: [NOT_STARTED, ACTIVE, COMPLETED]
-      description: Derived from Bangkok's current date and the inclusive project date range.
+      description: Effective lifecycle status. Uses status_override when set; otherwise derived from Bangkok's current date and the inclusive project date range. ACTIVE permits sales outside planned dates when manually selected.
+    ProjectStatusOverride:
+      type: [string, "null"]
+      enum: [NOT_STARTED, ACTIVE, COMPLETED, null]
+      description: A manual status choice that persists until replaced. Null or omission in a create/update payload selects automatic date-based status.
     ProjectMutationRequest:
       type: object
       additionalProperties: false
@@ -991,10 +995,11 @@ components:
         description: { type: [string, "null"], maxLength: 2000 }
         start_date: { type: string, format: date }
         end_date: { type: string, format: date, description: Must not be earlier than `start_date`; repeat `start_date` for a single-day project }
+        status_override: { $ref: "#/components/schemas/ProjectStatusOverride" }
     Project:
       type: object
       additionalProperties: false
-      required: [project_id, name, description, start_date, end_date, status, order_count, created_at, updated_at]
+      required: [project_id, name, description, start_date, end_date, status, status_override, order_count, created_at, updated_at]
       properties:
         project_id: { type: integer, format: int64, minimum: 1, example: 7 }
         name: { type: string, maxLength: 150, example: Engineering Fair 2026 }
@@ -1002,6 +1007,7 @@ components:
         start_date: { type: string, format: date, example: "2026-09-05" }
         end_date: { type: string, format: date, example: "2026-09-07" }
         status: { $ref: "#/components/schemas/ProjectStatus" }
+        status_override: { $ref: "#/components/schemas/ProjectStatusOverride" }
         order_count: { type: integer, format: int64, minimum: 0, example: 42 }
         created_at: { type: string, format: date-time, example: "2026-08-26T10:00:00+07:00" }
         updated_at: { type: string, format: date-time, example: "2026-08-26T10:30:00+07:00" }
@@ -1551,7 +1557,7 @@ components:
         - { type: object, required: [data], properties: { data: { $ref: "#/components/schemas/Project" } } }
       example:
         success: true
-        data: { project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: NOT_STARTED, order_count: 0, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-08-26T10:00:00+07:00" }
+        data: { project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: ACTIVE, status_override: ACTIVE, order_count: 0, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-08-26T10:00:00+07:00" }
     ProjectListEnvelope:
       allOf:
         - { $ref: "#/components/schemas/SuccessBase" }
@@ -1559,7 +1565,7 @@ components:
       example:
         success: true
         data:
-          projects: [{ project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: NOT_STARTED, order_count: 0, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-08-26T10:00:00+07:00" }]
+          projects: [{ project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: NOT_STARTED, status_override: null, order_count: 0, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-08-26T10:00:00+07:00" }]
           total: 1
           page: 1
           page_size: 10
@@ -1626,7 +1632,7 @@ components:
       example:
         success: true
         data:
-          project: { project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: ACTIVE, order_count: 12, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-09-05T08:00:00+07:00" }
+          project: { project_id: 7, name: Engineering Fair 2026, description: Main merchandise booth, start_date: "2026-09-05", end_date: "2026-09-07", status: ACTIVE, status_override: null, order_count: 12, created_at: "2026-08-26T10:00:00+07:00", updated_at: "2026-09-05T08:00:00+07:00" }
           can_checkout: true
           categories:
             - name: Accessories

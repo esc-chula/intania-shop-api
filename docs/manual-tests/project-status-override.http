@@ -1,0 +1,91 @@
+@baseUrl = http://localhost:8080
+@adminToken = replace-with-admin-token
+@userToken = replace-with-user-token
+# Set projectId from the create response. Run against a disposable local DB.
+@projectId = replace-with-created-project-id
+
+### Create with manual ACTIVE before planned dates — 201, status ACTIVE, status_override ACTIVE
+POST {{baseUrl}}/projects
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":"ACTIVE"}
+
+### Read persisted override — 200, status ACTIVE, status_override ACTIVE
+GET {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{adminToken}}
+
+### Filter uses effective status — includes the new project
+GET {{baseUrl}}/projects?name=Manual%20status%20test&status=ACTIVE
+Authorization: Bearer {{adminToken}}
+
+### POS preview — can_checkout true despite future dates
+GET {{baseUrl}}/projects/{{projectId}}/pos
+Authorization: Bearer {{adminToken}}
+
+### Manually complete — 200, status COMPLETED, status_override COMPLETED
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":"COMPLETED"}
+
+### POS preview — can_checkout false
+GET {{baseUrl}}/projects/{{projectId}}/pos
+Authorization: Bearer {{adminToken}}
+
+### Invalid enum — 400 VALIDATION_ERROR; previous override remains COMPLETED
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":"INVALID"}
+
+### Explicit null restores automatic status — 200, status NOT_STARTED, status_override null
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":null}
+
+### Set another override — 200, status COMPLETED
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":"COMPLETED"}
+
+### Omission also restores automatic status — 200, status NOT_STARTED, status_override null
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02"}
+
+### No token — 401; project is unchanged
+PUT {{baseUrl}}/projects/{{projectId}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":"ACTIVE"}
+
+### USER token — 403; project is unchanged
+PUT {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{userToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":"ACTIVE"}
+
+### Missing project — 404 PROJECT_NOT_FOUND
+PUT {{baseUrl}}/projects/9223372036854775807
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"name":"Manual status test","start_date":"2099-01-01","end_date":"2099-01-02","status_override":"ACTIVE"}
+
+### Cleanup the project with no orders — 204
+DELETE {{baseUrl}}/projects/{{projectId}}
+Authorization: Bearer {{adminToken}}
+
+# Automated integration cases in project_status_integration_test.go also verify
+# early/late sales, quotation, history/export after clearing, completed-project
+# mutation guards, and archive/reactivation conflicts with real PostgreSQL.
