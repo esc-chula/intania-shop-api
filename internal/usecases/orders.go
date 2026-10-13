@@ -19,7 +19,7 @@ type OrderStore interface {
 }
 
 // ProjectExistenceStore is the minimal project read needed to derive an
-// order history's default date range from the project's own start date.
+// order history's default date range from the project's dates.
 type ProjectExistenceStore interface {
 	Detail(context.Context, models.Date, int64) (models.Project, error)
 }
@@ -110,7 +110,7 @@ func (service *OrderService) Detail(ctx context.Context, projectID, orderID int6
 var ErrInvalidOrderID = errors.New("order ID must be positive")
 
 // buildFilter validates the query and resolves the default created_from/
-// created_to range: 00:00 Asia/Bangkok on the project's start date through
+// created_to range: the earlier of the project's start and creation days through
 // the current time.
 func (service *OrderService) buildFilter(ctx context.Context, projectID int64, query OrderListQuery) (models.OrderFilter, error) {
 	filter := models.OrderFilter{
@@ -167,9 +167,10 @@ func (service *OrderService) buildFilter(ctx context.Context, projectID int64, q
 	return filter, nil
 }
 
-// resolveDateRange defaults created_from to 00:00 Asia/Bangkok on the
-// project's start date and created_to to the current time, and otherwise
-// parses the explicit RFC3339 values the client supplied.
+// resolveDateRange defaults created_from to 00:00 Asia/Bangkok on the earlier
+// of the project's start and creation days and created_to to the current time.
+// ponytail: project creation bounds early sales without another order query.
+// Explicit filters use the RFC3339 values the client supplied.
 func (service *OrderService) resolveDateRange(ctx context.Context, projectID int64, rawFrom, rawTo string, now time.Time) (time.Time, time.Time, error) {
 	createdFrom := strings.TrimSpace(rawFrom)
 	createdTo := strings.TrimSpace(rawTo)
@@ -183,6 +184,10 @@ func (service *OrderService) resolveDateRange(ctx context.Context, projectID int
 			return time.Time{}, time.Time{}, fmt.Errorf("get project for default order range: %w", err)
 		}
 		from = models.StartOfBangkokDay(project.StartDate)
+		creationDay := models.StartOfBangkokDay(models.TodayInBangkok(project.CreatedAt))
+		if creationDay.Before(from) {
+			from = creationDay
+		}
 	} else if from, err = time.Parse(time.RFC3339, createdFrom); err != nil {
 		return time.Time{}, time.Time{}, ProjectValidationError{Message: "Invalid created_from"}
 	}

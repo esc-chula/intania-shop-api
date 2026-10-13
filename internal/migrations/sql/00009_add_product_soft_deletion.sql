@@ -17,12 +17,14 @@ CREATE INDEX idx_project_products_product
 -- +goose Down
 -- Dropping this column after it has been used would silently reactivate
 -- archived products. Restore/resolve those rows explicitly before rollback.
+-- +goose StatementBegin
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM products WHERE deleted_at IS NOT NULL) THEN
         RAISE EXCEPTION 'cannot roll back product soft deletion while archived products exist';
     END IF;
 END $$;
+-- +goose StatementEnd
 
 DROP INDEX IF EXISTS idx_project_products_product;
 DROP INDEX IF EXISTS idx_products_active_id;

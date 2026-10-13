@@ -19,7 +19,7 @@ var (
 	ErrProjectCompleted      = errors.New("project is completed")
 	ErrProjectProductInvalid = errors.New("invalid project product assignment")
 	// ErrProjectArchivedProduct prevents a historical completed project with
-	// archived products from being moved back into a current/upcoming range.
+	// archived products from becoming NOT_STARTED or ACTIVE.
 	ErrProjectArchivedProduct = errors.New("project contains an archived product")
 	// ErrProjectProductPromotion reports an assignment omitted while it is
 	// still referenced by a project promotion.
@@ -29,7 +29,7 @@ var (
 	ErrProjectProductPromotionPrice = errors.New("project product price would invalidate a promotion")
 )
 
-// ProjectRepository reads and writes projects and their derived status and order count.
+// ProjectRepository reads and writes projects and their effective status and order count.
 type ProjectRepository struct{ pool *pgxpool.Pool }
 
 // NewProjectRepository constructs a project repository over the connection pool.
@@ -37,15 +37,13 @@ func NewProjectRepository(pool *pgxpool.Pool) *ProjectRepository {
 	return &ProjectRepository{pool: pool}
 }
 
-// projectStatusExpression derives the status from the supplied calendar date.
-// The date is passed in rather than read from the database clock so that the
-// SQL and Go definitions of "today" can never disagree;
-// TestProjectRepositoryStatusMatchesTheDomainRule holds the two in agreement.
-const projectStatusExpression = `CASE
+// projectStatusExpression resolves the override or uses the supplied Bangkok date.
+// All queries using it alias projects as p and pass today as $1.
+const projectStatusExpression = `COALESCE(p.status_override, CASE
     WHEN $1::date < p.start_date THEN 'NOT_STARTED'
     WHEN $1::date > p.end_date THEN 'COMPLETED'
     ELSE 'ACTIVE'
-END`
+END)`
 
 // projectOrderCount counts orders once per project rather than once per
 // listed row, so that listing a page never issues one query per project.
@@ -59,7 +57,7 @@ const projectOrderCount = `LEFT JOIN (
 // projectColumns is the shared projection for a single project row.
 const projectColumns = `p.project_id, p.name, p.description, p.start_date, p.end_date,
        p.created_at, p.updated_at, COALESCE(o.order_count, 0),
-       ` + projectStatusExpression
+       ` + projectStatusExpression + `, p.status_override`
 
 const projectFilterClause = ` WHERE ($2::text = '' OR p.name ILIKE '%' || $2 || '%' ESCAPE '\')
   AND ($3::text = '' OR ` + projectStatusExpression + ` = $3)`
@@ -111,7 +109,7 @@ func (repository *ProjectRepository) List(ctx context.Context, today models.Date
 	return projects, total, nil
 }
 
-// Detail returns a single project with its derived status and order count.
+// Detail returns a single project with its effective status and order count.
 func (repository *ProjectRepository) Detail(ctx context.Context, today models.Date, projectID int64) (models.Project, error) {
 	project, err := scanProject(repository.pool.QueryRow(ctx, detailProjectQuery, today.Time, projectID))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -150,7 +148,7 @@ func scanProject(row rowScanner, extra ...any) (models.Project, error) {
 	var status string
 	destinations := append([]any{
 		&project.ProjectID, &project.Name, &project.Description, &startDate, &endDate,
-		&project.CreatedAt, &project.UpdatedAt, &project.OrderCount, &status,
+		&project.CreatedAt, &project.UpdatedAt, &project.OrderCount, &status, &project.StatusOverride,
 	}, extra...)
 	if err := row.Scan(destinations...); err != nil {
 		return models.Project{}, fmt.Errorf("scan project: %w", err)
@@ -181,15 +179,15 @@ func isDeleteConstraintViolation(err error) bool {
 	return pgErr.Code == foreignKeyViolation || pgErr.Code == restrictViolation
 }
 
-const createProjectQuery = `INSERT INTO projects (name, description, start_date, end_date)
-VALUES ($1, $2, $3::date, $4::date)
+const createProjectQuery = `INSERT INTO projects (name, description, start_date, end_date, status_override)
+VALUES ($1, $2, $3::date, $4::date, $5)
 RETURNING project_id`
 
 // updateProjectQuery replaces every editable column, so an update is a complete
 // replacement. updated_at is set here because the table has no trigger for it.
 const updateProjectQuery = `UPDATE projects
 SET name = $2, description = $3, start_date = $4::date, end_date = $5::date,
-    updated_at = CURRENT_TIMESTAMP
+    status_override = $6, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = $1`
 
 // Create inserts a project and reads it back through the shared projection, so
@@ -199,7 +197,7 @@ func (repository *ProjectRepository) Create(ctx context.Context, today models.Da
 	var projectID int64
 	if err := repository.pool.QueryRow(
 		ctx, createProjectQuery,
-		*input.Name, input.Description, input.StartDate.Time, input.EndDate.Time,
+		*input.Name, input.Description, input.StartDate.Time, input.EndDate.Time, input.StatusOverride,
 	).Scan(&projectID); err != nil {
 		return models.Project{}, fmt.Errorf("create project: %w", err)
 	}
@@ -231,33 +229,37 @@ func (repository *ProjectRepository) Update(ctx context.Context, today models.Da
 	}
 	defer rollback(ctx, tx)
 
-	var lockedProjectID int64
+	var previousStart, previousEnd time.Time
 	if err := tx.QueryRow(ctx, `
-		SELECT project_id
+		SELECT start_date, end_date
 		FROM projects
 		WHERE project_id = $1
-		FOR UPDATE`, projectID).Scan(&lockedProjectID); err != nil {
+		FOR UPDATE`, projectID).Scan(&previousStart, &previousEnd); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return models.Project{}, ErrProjectNotFound
 		}
 		return models.Project{}, fmt.Errorf("lock project for update: %w", err)
 	}
 
-	var conflict bool
-	if err := tx.QueryRow(ctx, orderOutsideDateRangeQuery,
-		projectID, input.StartDate.Time, input.EndDate.Time).Scan(&conflict); err != nil {
-		return models.Project{}, fmt.Errorf("check project order dates: %w", err)
-	}
-	if conflict {
-		return models.Project{}, ErrProjectSaleDatesConflict
+	// Manual ACTIVE can produce orders outside planned dates. Unchanged dates
+	// must not prevent a later status or metadata edit.
+	if !previousStart.Equal(input.StartDate.Time) || !previousEnd.Equal(input.EndDate.Time) {
+		var conflict bool
+		if err := tx.QueryRow(ctx, orderOutsideDateRangeQuery,
+			projectID, input.StartDate.Time, input.EndDate.Time).Scan(&conflict); err != nil {
+			return models.Project{}, fmt.Errorf("check project order dates: %w", err)
+		}
+		if conflict {
+			return models.Project{}, ErrProjectSaleDatesConflict
+		}
 	}
 	// A completed project may keep archived products for historical display.
-	// It cannot be rescheduled into a date range that would make it current or
-	// upcoming while retaining an archived catalogue item.
-	if !today.After(input.EndDate.Time) {
+	// It cannot become non-completed while retaining an archived catalogue item.
+	prospective := models.Project{StartDate: *input.StartDate, EndDate: *input.EndDate, StatusOverride: input.StatusOverride}
+	if prospective.EffectiveStatus(today) != models.ProjectStatusCompleted {
 		// Hold a compatible key-share lock on every assigned product before
 		// checking its lifecycle. Archive takes FOR UPDATE on the same product,
-		// so a date change and archive cannot pass each other's checks using
+		// so a status/date change and archive cannot pass each other's checks using
 		// different snapshots.
 		lockedProducts, err := tx.Query(ctx, `
 			SELECT p.id
@@ -267,7 +269,7 @@ func (repository *ProjectRepository) Update(ctx context.Context, today models.Da
 			ORDER BY p.id
 			FOR KEY SHARE OF p`, projectID)
 		if err != nil {
-			return models.Project{}, fmt.Errorf("lock project products for date update: %w", err)
+			return models.Project{}, fmt.Errorf("lock project products for update: %w", err)
 		}
 		for lockedProducts.Next() {
 			var productID int64
@@ -298,7 +300,7 @@ func (repository *ProjectRepository) Update(ctx context.Context, today models.Da
 	}
 
 	if _, err := tx.Exec(ctx, updateProjectQuery,
-		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time); err != nil {
+		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time, input.StatusOverride); err != nil {
 		return models.Project{}, fmt.Errorf("update project: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -358,14 +360,14 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 		return nil, fmt.Errorf("begin project product replacement: %w", err)
 	}
 	defer rollback(ctx, tx)
-	var endDate time.Time
-	if err = tx.QueryRow(ctx, `SELECT end_date FROM projects WHERE project_id=$1 FOR UPDATE`, projectID).Scan(&endDate); err != nil {
+	var status models.ProjectStatus
+	if err = tx.QueryRow(ctx, `SELECT `+projectStatusExpression+` FROM projects p WHERE p.project_id=$2 FOR UPDATE`, today.Time, projectID).Scan(&status); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrProjectNotFound
 		}
 		return nil, fmt.Errorf("lock project: %w", err)
 	}
-	if today.After(endDate) {
+	if status == models.ProjectStatusCompleted {
 		return nil, ErrProjectCompleted
 	}
 	for _, item := range items {

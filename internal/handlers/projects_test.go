@@ -67,3 +67,36 @@ func TestProjectHandlerMapsInvalidatingPromotionPriceConflict(t *testing.T) {
 		t.Fatalf("error message = %q", body.Error)
 	}
 }
+
+func TestDecodeProjectStatusOverride(t *testing.T) {
+	for _, test := range []struct {
+		body string
+		want models.ProjectStatus
+		ok   bool
+	}{
+		{`{}`, "", true},
+		{`{"status_override":null}`, "", true},
+		{`{"status_override":"ACTIVE"}`, models.ProjectStatusActive, true},
+		{`{"status_override":1}`, "", false},
+		{`{"status_override":true}`, "", false},
+		{`{"status_overide":"ACTIVE"}`, "", false},
+	} {
+		t.Run(test.body, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPut, "/projects/3", strings.NewReader(test.body))
+			response := httptest.NewRecorder()
+			input, ok := decodeProjectInput(response, request)
+			if ok != test.ok {
+				t.Fatalf("decoded = %t, want %t", ok, test.ok)
+			}
+			if test.want == "" && input.StatusOverride != nil {
+				t.Fatalf("override = %v, want nil", input.StatusOverride)
+			}
+			if test.want != "" && (input.StatusOverride == nil || *input.StatusOverride != test.want) {
+				t.Fatalf("override = %v, want %s", input.StatusOverride, test.want)
+			}
+			if !ok && response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400", response.Code)
+			}
+		})
+	}
+}

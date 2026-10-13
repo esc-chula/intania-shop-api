@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// ProjectStatus is the derived lifecycle state of a project.
+// ProjectStatus is the lifecycle state of a project.
 type ProjectStatus string
 
 const (
@@ -32,17 +32,26 @@ func ProjectStatusFor(startDate Date, endDate Date, today Date) ProjectStatus {
 	return ProjectStatusActive
 }
 
-// Project is a time-bounded project with status and order count derived from its dates and linked orders.
+// Project is a time-bounded project with an optional manual status override.
 type Project struct {
-	ProjectID   int64         `json:"project_id"`
-	Name        string        `json:"name"`
-	Description *string       `json:"description"`
-	StartDate   Date          `json:"start_date"`
-	EndDate     Date          `json:"end_date"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
-	Status      ProjectStatus `json:"status"`
-	OrderCount  int64         `json:"order_count"`
+	ProjectID      int64          `json:"project_id"`
+	Name           string         `json:"name"`
+	Description    *string        `json:"description"`
+	StartDate      Date           `json:"start_date"`
+	EndDate        Date           `json:"end_date"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+	Status         ProjectStatus  `json:"status"`
+	StatusOverride *ProjectStatus `json:"status_override"`
+	OrderCount     int64          `json:"order_count"`
+}
+
+// EffectiveStatus uses the manual choice, falling back to the project dates.
+func (project Project) EffectiveStatus(today Date) ProjectStatus {
+	if project.StatusOverride != nil {
+		return *project.StatusOverride
+	}
+	return ProjectStatusFor(project.StartDate, project.EndDate, today)
 }
 
 // bangkok is the project calendar timezone used to derive status.
@@ -122,10 +131,11 @@ type ProjectListResponse struct {
 }
 
 type ProjectInput struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	StartDate   *Date   `json:"start_date"`
-	EndDate     *Date   `json:"end_date"`
+	Name           *string        `json:"name"`
+	Description    *string        `json:"description"`
+	StartDate      *Date          `json:"start_date"`
+	EndDate        *Date          `json:"end_date"`
+	StatusOverride *ProjectStatus `json:"status_override"`
 }
 
 type ProjectProductAssignmentInput struct {

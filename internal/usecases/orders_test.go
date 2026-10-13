@@ -50,7 +50,7 @@ func TestOrderServiceListDefaultsCreatedRangeToProjectStartInBangkok(t *testing.
 		t.Fatal(err)
 	}
 	store := &orderStoreStub{}
-	projects := &projectExistenceStoreStub{project: models.Project{StartDate: startDate}}
+	projects := &projectExistenceStoreStub{project: models.Project{StartDate: startDate, CreatedAt: startDate.AddDate(0, 0, 1)}}
 	service := NewOrderService(store, projects)
 	fixedNow := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return fixedNow }
@@ -88,6 +88,28 @@ func TestOrderServiceListUsesExplicitCreatedRange(t *testing.T) {
 	wantTo, _ := time.Parse(time.RFC3339, query.CreatedTo)
 	if !store.filter.CreatedFrom.Equal(wantFrom) || !store.filter.CreatedTo.Equal(wantTo) {
 		t.Fatalf("explicit range not applied: %+v", store.filter)
+	}
+}
+
+func TestOrderServiceDefaultsIncludeSalesBeforePlannedStartAfterOverrideCleared(t *testing.T) {
+	start, _ := models.ParseDate("2026-10-20")
+	createdAt := time.Date(2026, 10, 12, 18, 30, 0, 0, time.UTC) // October 13 in Bangkok.
+	projects := &projectExistenceStoreStub{project: models.Project{StartDate: start, CreatedAt: createdAt}}
+	store := &orderStoreStub{}
+	service := NewOrderService(store, projects)
+	service.now = func() time.Time { return time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC) }
+	wantFrom := time.Date(2026, 10, 13, 0, 0, 0, 0, time.FixedZone("Bangkok", 7*60*60))
+	if _, err := service.List(context.Background(), 1, OrderListQuery{}, 1, 10); err != nil {
+		t.Fatal(err)
+	}
+	if !store.filter.CreatedFrom.Equal(wantFrom) {
+		t.Fatalf("list created_from = %v, want %v", store.filter.CreatedFrom, wantFrom)
+	}
+	if _, err := service.Export(context.Background(), 1, OrderListQuery{}); err != nil {
+		t.Fatal(err)
+	}
+	if !store.filter.CreatedFrom.Equal(wantFrom) {
+		t.Fatalf("export created_from = %v, want %v", store.filter.CreatedFrom, wantFrom)
 	}
 }
 
