@@ -4,21 +4,25 @@ import (
 	"context"
 	"fmt"
 	"github.com/esc-chula/intania-shop-api/internal/models"
+	"time"
 )
 
 type ProductCreator interface {
 	Create(context.Context, models.ProductInput) (models.ProductDetail, error)
 	Update(context.Context, int64, models.ProductInput) (models.ProductDetail, error)
-	Delete(context.Context, int64) error
+	Archive(context.Context, models.Date, int64) error
 	CreateVariant(context.Context, int64, models.VariantInput) (models.Variant, error)
 	UpdateVariant(context.Context, int64, models.VariantInput) (models.Variant, error)
 	DeleteVariant(context.Context, int64) error
 }
 
-type ProductAdminService struct{ products ProductCreator }
+type ProductAdminService struct {
+	products ProductCreator
+	now      func() time.Time
+}
 
 func NewProductAdminService(products ProductCreator) *ProductAdminService {
-	return &ProductAdminService{products: products}
+	return &ProductAdminService{products: products, now: time.Now}
 }
 
 func (s *ProductAdminService) Create(ctx context.Context, input models.ProductInput) (models.ProductDetail, error) {
@@ -39,7 +43,7 @@ func (s *ProductAdminService) Delete(ctx context.Context, productID int64) error
 	if productID <= 0 {
 		return fmt.Errorf("product ID must be positive")
 	}
-	return s.products.Delete(ctx, productID)
+	return s.products.Archive(ctx, models.TodayInBangkok(s.now()), productID)
 }
 
 func (s *ProductAdminService) CreateVariant(ctx context.Context, productID int64, input models.VariantInput) (models.Variant, error) {

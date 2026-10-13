@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/esc-chula/intania-shop-api/internal/models"
+	"github.com/esc-chula/intania-shop-api/internal/repositories"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
@@ -67,7 +69,7 @@ func (h *ProductAdminHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := h.products.Update(r.Context(), id, in)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeProductMutationError(w, r, err, http.StatusNotFound)
 		return
 	}
 	writeSuccess(w, http.StatusOK, out)
@@ -79,7 +81,9 @@ func (h *ProductAdminHandler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.products.Delete(r.Context(), id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		// Unlike the legacy implementation, an unexpected archive failure is
+		// not misreported as a missing product.
+		writeProductMutationError(w, r, err, http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -97,7 +101,7 @@ func (h *ProductAdminHandler) createVariant(w http.ResponseWriter, r *http.Reque
 	}
 	out, err := h.products.CreateVariant(r.Context(), productID, in)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeProductMutationError(w, r, err, http.StatusBadRequest)
 		return
 	}
 	writeSuccess(w, http.StatusCreated, out)
@@ -115,7 +119,7 @@ func (h *ProductAdminHandler) updateVariant(w http.ResponseWriter, r *http.Reque
 	}
 	out, err := h.products.UpdateVariant(r.Context(), variantID, in)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeProductMutationError(w, r, err, http.StatusNotFound)
 		return
 	}
 	writeSuccess(w, http.StatusOK, out)
@@ -127,8 +131,27 @@ func (h *ProductAdminHandler) deleteVariant(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := h.products.DeleteVariant(r.Context(), variantID); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeProductMutationError(w, r, err, http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func writeProductMutationError(w http.ResponseWriter, r *http.Request, err error, fallbackStatus int) {
+	switch {
+	case errors.Is(err, repositories.ErrProductNotFound):
+		writeProductError(w, r, http.StatusNotFound, models.ProductErrorNotFound, "Product not found")
+	case errors.Is(err, repositories.ErrVariantNotFound):
+		writeProductError(w, r, http.StatusNotFound, models.ProductErrorVariantNotFound, "Variant not found")
+	case errors.Is(err, repositories.ErrProductInUse):
+		writeProductError(w, r, http.StatusConflict, models.ProductErrorInUse, "Product is assigned to a current or upcoming project")
+	case errors.Is(err, repositories.ErrProductArchived):
+		writeProductError(w, r, http.StatusConflict, models.ProductErrorArchived, "Product is archived")
+	default:
+		if fallbackStatus == http.StatusInternalServerError {
+			writeProductError(w, r, fallbackStatus, models.ProductErrorInternal, "Unable to archive product")
+			return
+		}
+		writeError(w, fallbackStatus, err.Error())
+	}
 }

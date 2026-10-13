@@ -18,6 +18,9 @@ var (
 	ErrProjectNotFound       = errors.New("project not found")
 	ErrProjectCompleted      = errors.New("project is completed")
 	ErrProjectProductInvalid = errors.New("invalid project product assignment")
+	// ErrProjectArchivedProduct prevents a historical completed project with
+	// archived products from being moved back into a current/upcoming range.
+	ErrProjectArchivedProduct = errors.New("project contains an archived product")
 	// ErrProjectProductPromotion reports an assignment omitted while it is
 	// still referenced by a project promotion.
 	ErrProjectProductPromotion = errors.New("project product assignment is used by a promotion")
@@ -248,6 +251,51 @@ func (repository *ProjectRepository) Update(ctx context.Context, today models.Da
 	if conflict {
 		return models.Project{}, ErrProjectSaleDatesConflict
 	}
+	// A completed project may keep archived products for historical display.
+	// It cannot be rescheduled into a date range that would make it current or
+	// upcoming while retaining an archived catalogue item.
+	if !today.After(input.EndDate.Time) {
+		// Hold a compatible key-share lock on every assigned product before
+		// checking its lifecycle. Archive takes FOR UPDATE on the same product,
+		// so a date change and archive cannot pass each other's checks using
+		// different snapshots.
+		lockedProducts, err := tx.Query(ctx, `
+			SELECT p.id
+			FROM project_products pp
+			JOIN products p ON p.id = pp.product_id
+			WHERE pp.project_id = $1
+			ORDER BY p.id
+			FOR KEY SHARE OF p`, projectID)
+		if err != nil {
+			return models.Project{}, fmt.Errorf("lock project products for date update: %w", err)
+		}
+		for lockedProducts.Next() {
+			var productID int64
+			if err := lockedProducts.Scan(&productID); err != nil {
+				lockedProducts.Close()
+				return models.Project{}, fmt.Errorf("scan locked project product: %w", err)
+			}
+		}
+		if err := lockedProducts.Err(); err != nil {
+			lockedProducts.Close()
+			return models.Project{}, fmt.Errorf("iterate locked project products: %w", err)
+		}
+		lockedProducts.Close()
+
+		var hasArchivedProduct bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM project_products pp
+				JOIN products p ON p.id = pp.product_id
+				WHERE pp.project_id = $1 AND p.deleted_at IS NOT NULL
+			)`, projectID).Scan(&hasArchivedProduct); err != nil {
+			return models.Project{}, fmt.Errorf("check project archived products: %w", err)
+		}
+		if hasArchivedProduct {
+			return models.Project{}, ErrProjectArchivedProduct
+		}
+	}
 
 	if _, err := tx.Exec(ctx, updateProjectQuery,
 		projectID, *input.Name, input.Description, input.StartDate.Time, input.EndDate.Time); err != nil {
@@ -321,17 +369,30 @@ func (repository *ProjectRepository) ReplaceProducts(ctx context.Context, today 
 		return nil, ErrProjectCompleted
 	}
 	for _, item := range items {
-		var valid bool
+		var lockedProductID int64
 		if item.VariantID == nil {
-			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM products p WHERE p.id=$1 AND NOT EXISTS (SELECT 1 FROM variants v WHERE v.product_id=p.id))`, item.ProductID).Scan(&valid)
+			err = tx.QueryRow(ctx, `
+				SELECT p.id
+				FROM products p
+				WHERE p.id=$1
+				  AND p.deleted_at IS NULL
+				  AND NOT EXISTS (SELECT 1 FROM variants v WHERE v.product_id=p.id)
+				FOR KEY SHARE OF p`, item.ProductID).Scan(&lockedProductID)
 		} else {
-			err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM variants WHERE variant_id=$1 AND product_id=$2)`, *item.VariantID, item.ProductID).Scan(&valid)
+			err = tx.QueryRow(ctx, `
+				SELECT p.id
+				FROM variants v
+				JOIN products p ON p.id=v.product_id
+				WHERE v.variant_id=$1
+				  AND v.product_id=$2
+				  AND p.deleted_at IS NULL
+				FOR KEY SHARE OF p`, *item.VariantID, item.ProductID).Scan(&lockedProductID)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrProjectProductInvalid
 		}
 		if err != nil {
 			return nil, fmt.Errorf("validate project product: %w", err)
-		}
-		if !valid {
-			return nil, ErrProjectProductInvalid
 		}
 	}
 	current, err := readCurrentProjectProducts(ctx, tx, projectID)
@@ -685,7 +746,8 @@ func readCurrentProjectProducts(ctx context.Context, tx pgx.Tx, projectID int64)
 	return current, nil
 }
 
-const projectProductFilterClause = `WHERE ($1::text = '' OR p.name ILIKE '%' || $1 || '%' ESCAPE '\')
+const projectProductFilterClause = `WHERE p.deleted_at IS NULL
+  AND ($1::text = '' OR p.name ILIKE '%' || $1 || '%' ESCAPE '\')
   AND ($2::text = '' OR lower(p.category) = lower($2))`
 
 // listProductCandidatesQuery pages over products in the CTE, before any

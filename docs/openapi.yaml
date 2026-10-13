@@ -15,7 +15,7 @@ servers:
 tags:
   - { name: Service }
   - { name: Authentication }
-  - { name: Products, description: "Admin-only product catalogue" }
+  - { name: Products, description: "Admin-only active product catalogue; archived products remain only in historical records" }
   - { name: Inventory }
   - { name: Uploads }
   - { name: Projects, description: "Admin-only event project administration" }
@@ -135,7 +135,7 @@ paths:
       operationId: listProducts
       tags: [Products]
       summary: List products
-      description: Admin only.
+      description: Admin only. Archived products are excluded from this normal catalogue.
       security: [{ bearerAuth: [] }]
       parameters:
         - { $ref: "#/components/parameters/Page" }
@@ -152,7 +152,7 @@ paths:
       operationId: createProduct
       tags: [Products]
       summary: Create product
-      description: Admin only.
+      description: Admin only. Creating a new product with similar fields to an archived product is allowed and creates a distinct product identity.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/CreateProduct" }
       responses:
@@ -166,7 +166,7 @@ paths:
       operationId: searchProducts
       tags: [Products]
       summary: Search products
-      description: Admin only.
+      description: Admin only. Searches only active (not archived) products.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, minLength: 1 } }
@@ -184,7 +184,7 @@ paths:
       operationId: getProduct
       tags: [Products]
       summary: Get product details
-      description: Admin only.
+      description: Admin only. Archived products are treated as not found by this active-catalogue endpoint.
       security: [{ bearerAuth: [] }]
       responses:
         "200": { $ref: "#/components/responses/ProductDetail" }
@@ -197,7 +197,7 @@ paths:
       operationId: updateProduct
       tags: [Products]
       summary: Update product
-      description: Admin only. Supplied fields replace existing values.
+      description: Admin only. Supplied fields replace existing values. Archived products cannot be changed (`409 PRODUCT_ARCHIVED`).
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/UpdateProduct" }
       responses:
@@ -205,26 +205,35 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/ProductAPIError" }
+        "409": { $ref: "#/components/responses/ProductAPIError" }
     delete:
       operationId: deleteProduct
       tags: [Products]
-      summary: Delete product
-      description: Admin only.
+      summary: Archive product
+      description: |
+        Admin only. This is a soft deletion: it sets the product's archive
+        timestamp and does not delete product rows, variants, inventory
+        transactions, order snapshots, or GCS image objects. A product
+        assigned to a current or upcoming project (derived from Bangkok's
+        date) is rejected with `409 PRODUCT_IN_USE`. Repeating DELETE for an
+        already archived product is idempotent and returns `204`.
       security: [{ bearerAuth: [] }]
       responses:
-        "204": { description: Product deleted }
+        "204": { description: "Product archived, including an idempotent repeat archive" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/ProductAPIError" }
+        "409": { $ref: "#/components/responses/ProductAPIError" }
+        "500": { $ref: "#/components/responses/ProductAPIError" }
   /products/{id}/variants:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     post:
       operationId: createProductVariant
       tags: [Products]
       summary: Create product variant
-      description: Admin only.
+      description: Admin only. Archived products reject new variants with `409 PRODUCT_ARCHIVED`.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/Variant" }
       responses:
@@ -232,13 +241,15 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/ProductAPIError" }
+        "409": { $ref: "#/components/responses/ProductAPIError" }
   /variants/{id}:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     put:
       operationId: updateVariant
       tags: [Products]
       summary: Update product variant
-      description: Admin only.
+      description: Admin only. A variant whose product is archived cannot be changed (`409 PRODUCT_ARCHIVED`).
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/Variant" }
       responses:
@@ -246,26 +257,28 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/ProductAPIError" }
+        "409": { $ref: "#/components/responses/ProductAPIError" }
     delete:
       operationId: deleteVariant
       tags: [Products]
       summary: Delete product variant
-      description: Admin only.
+      description: Admin only. A variant whose product is archived cannot be deleted (`409 PRODUCT_ARCHIVED`).
       security: [{ bearerAuth: [] }]
       responses:
         "204": { description: Variant deleted }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
-        "404": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/ProductAPIError" }
+        "409": { $ref: "#/components/responses/ProductAPIError" }
   /products/{id}/stock/adjust:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     post:
       operationId: adjustProductStock
       tags: [Inventory]
       summary: Adjust product or variant stock
-      description: Admin only.
+      description: Admin only. Archived products and their variants reject adjustments with `409 PRODUCT_ARCHIVED`; stock history remains readable.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -277,6 +290,8 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/ProductAPIError" }
+        "409": { $ref: "#/components/responses/ProductAPIError" }
   /products/{id}/stock/transactions:
     parameters: [{ $ref: "#/components/parameters/ID" }]
     get:
@@ -403,7 +418,7 @@ paths:
       operationId: updateProject
       tags: [Projects]
       summary: Update a project
-      description: Admin only. Every field is replaced, so an omitted `description` is cleared. Sale dates cannot be changed to exclude the Bangkok calendar date of any order the project already has (`409 PROJECT_CONFLICT`).
+      description: Admin only. Every field is replaced, so an omitted `description` is cleared. Sale dates cannot be changed to exclude the Bangkok calendar date of any order the project already has (`409 PROJECT_CONFLICT`), or to make a project containing archived historical products current/upcoming.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ProjectMutation" }
       responses:
@@ -433,7 +448,7 @@ paths:
       operationId: listProjectProductCandidates
       tags: [Project Products]
       summary: List products eligible for project selection
-      description: Admin only. Products are grouped with their sellable items and current selection state.
+      description: Admin only. Active products are grouped with their sellable items and current selection state; archived products are excluded.
       security: [{ bearerAuth: [] }]
       parameters:
         - { $ref: "#/components/parameters/ProjectID" }
@@ -466,7 +481,7 @@ paths:
       operationId: replaceProjectProducts
       tags: [Project Products]
       summary: Atomically replace project product assignments
-      description: Admin only. The supplied list is the complete desired selection, and any validation failure rejects the entire replacement. Omitted project-product assignments are removed only when no Promotion references them; a referenced assignment returns `409 PROJECT_CONFLICT`. Retained assignments keep their identity. A changed project price is updated in place when every affected Promotion remains valid; a change that would make a Promotion price exceed its recalculated bundle is rejected atomically with `409 PROJECT_CONFLICT`. Otherwise Promotion bundle totals recalculate from the new price. Completed projects reject changes.
+      description: Admin only. The supplied list is the complete desired selection, and any validation failure rejects the entire replacement. Only active (not archived) products can be selected. Omitted project-product assignments are removed only when no Promotion references them; a referenced assignment returns `409 PROJECT_CONFLICT`. Retained assignments keep their identity. A changed project price is updated in place when every affected Promotion remains valid; a change that would make a Promotion price exceed its recalculated bundle is rejected atomically with `409 PROJECT_CONFLICT`. Otherwise Promotion bundle totals recalculate from the new price. Completed projects reject changes.
       security: [{ bearerAuth: [] }]
       requestBody: { $ref: "#/components/requestBodies/ReplaceProjectProducts" }
       responses:
@@ -573,7 +588,7 @@ paths:
       operationId: getProjectPOSCatalog
       tags: [POS]
       summary: Get the project POS catalogue
-      description: Admin only. Preview is available in any project status; `can_checkout` is true only while ACTIVE. Category groups are sorted case-insensitively by name in ascending order, with the null category last.
+      description: Admin only. Preview is available in any project status; `can_checkout` is true only while ACTIVE. Archived products are excluded even if a historical project assignment remains. Category groups are sorted case-insensitively by name in ascending order, with the null category last.
       security: [{ bearerAuth: [ADMIN] }]
       parameters: [{ $ref: "#/components/parameters/ProjectID" }]
       responses:
@@ -588,7 +603,7 @@ paths:
       operationId: quoteProjectPOSCheckout
       tags: [POS]
       summary: Validate and price a POS cart
-      description: Admin only. Available only while the project is ACTIVE. Client-supplied prices, discounts, and totals are never accepted.
+      description: Admin only. Available only while the project is ACTIVE. Archived products are not sellable and return `409 PRODUCT_NOT_SELLABLE`. Client-supplied prices, discounts, and totals are never accepted.
       security: [{ bearerAuth: [ADMIN] }]
       parameters: [{ $ref: "#/components/parameters/ProjectID" }]
       requestBody: { $ref: "#/components/requestBodies/POSQuote" }
@@ -621,7 +636,7 @@ paths:
       operationId: createProjectPOSOrder
       tags: [POS, Project Orders]
       summary: Atomically create a paid POS order and reduce stock
-      description: Admin only and ACTIVE projects only. Prices, Promotions, stock, and payment are revalidated inside the checkout transaction; nothing monetary is accepted from the client. Identical retries return the original order without reducing stock again; a key reused with different content returns `IDEMPOTENCY_KEY_REUSED`.
+      description: Admin only and ACTIVE projects only. Prices, Promotions, stock, product archive state, and payment are revalidated inside the checkout transaction; an archived product returns `409 PRODUCT_NOT_SELLABLE` even when a client loaded a catalogue earlier. Nothing monetary is accepted from the client. Identical retries return the original order without reducing stock again; a key reused with different content returns `IDEMPOTENCY_KEY_REUSED`.
       security: [{ bearerAuth: [] }]
       parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
       requestBody: { $ref: "#/components/requestBodies/POSCheckout" }
@@ -852,6 +867,16 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorResponse" }
+    ProductAPIError:
+      description: Product lifecycle mutation failed
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProductAPIErrorResponse" }
+          examples:
+            productInUse:
+              value: { success: false, error: Product is assigned to a current or upcoming project, code: PRODUCT_IN_USE, request_id: req_01J6B8K8QF4D }
+            archived:
+              value: { success: false, error: Product is archived, code: PRODUCT_ARCHIVED, request_id: req_01J6B8K8QF4E }
     AuthStart: { description: OAuth flow started, content: { application/json: { schema: { $ref: "#/components/schemas/AuthStartEnvelope" } } } }
     Login: { description: Authentication completed, content: { application/json: { schema: { $ref: "#/components/schemas/LoginEnvelope" } } } }
     ProductList: { description: Paginated products, content: { application/json: { schema: { $ref: "#/components/schemas/ProductListEnvelope" } } } }
@@ -908,6 +933,18 @@ components:
       properties:
         success: { type: boolean, const: false }
         error: { type: string, example: Product not found }
+    ProductAPIErrorCode:
+      type: string
+      enum: [VALIDATION_ERROR, PRODUCT_NOT_FOUND, VARIANT_NOT_FOUND, PRODUCT_IN_USE, PRODUCT_ARCHIVED, INTERNAL_ERROR]
+    ProductAPIErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [success, error, code, request_id]
+      properties:
+        success: { type: boolean, const: false }
+        error: { type: string, minLength: 1, example: Product is archived }
+        code: { $ref: "#/components/schemas/ProductAPIErrorCode" }
+        request_id: { type: string, minLength: 1, example: req_01J6B8K8QF4E }
     THBAmount:
       type: string
       pattern: '^(0|[1-9][0-9]*)\.[0-9]{2}$'

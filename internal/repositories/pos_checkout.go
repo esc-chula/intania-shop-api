@@ -217,17 +217,19 @@ func lockPOSStock(ctx context.Context, tx pgx.Tx, items []models.POSCartItemRequ
 	productIDs := make([]int64, 0, len(items))
 	variantIDs := make([]int64, 0, len(items))
 	for _, item := range items {
-		if item.VariantID == nil {
-			productIDs = append(productIDs, item.ProductID)
-			continue
+		// Always lock the parent product, including for a variant line. This
+		// serializes checkout with product archival, which changes the parent
+		// lifecycle rather than a variant row.
+		productIDs = append(productIDs, item.ProductID)
+		if item.VariantID != nil {
+			variantIDs = append(variantIDs, *item.VariantID)
 		}
-		variantIDs = append(variantIDs, *item.VariantID)
 	}
 
 	if len(productIDs) != 0 {
 		if _, err := tx.Exec(ctx, `
 			SELECT 1 FROM products
-			WHERE id = ANY($1::bigint[])
+			WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL
 			ORDER BY id
 			FOR NO KEY UPDATE`, productIDs); err != nil {
 			return fmt.Errorf("lock POS product stock: %w", err)
@@ -236,8 +238,9 @@ func lockPOSStock(ctx context.Context, tx pgx.Tx, items []models.POSCartItemRequ
 
 	if len(variantIDs) != 0 {
 		if _, err := tx.Exec(ctx, `
-			SELECT 1 FROM variants
-			WHERE variant_id = ANY($1::bigint[])
+			SELECT 1 FROM variants v
+			JOIN products p ON p.id = v.product_id AND p.deleted_at IS NULL
+			WHERE v.variant_id = ANY($1::bigint[])
 			ORDER BY variant_id
 			FOR NO KEY UPDATE`, variantIDs); err != nil {
 			return fmt.Errorf("lock POS variant stock: %w", err)
@@ -389,18 +392,24 @@ func reducePOSStock(ctx context.Context, tx pgx.Tx, item models.POSResolvedCartI
 
 	if item.Item.VariantID != nil {
 		err = tx.QueryRow(ctx, `
-			UPDATE variants
-			SET stock_quantity = COALESCE(stock_quantity, 0) - $2
-			WHERE variant_id = $1
-			RETURNING stock_quantity + $2, stock_quantity`,
+			UPDATE variants v
+			SET stock_quantity = COALESCE(v.stock_quantity, 0) - $2
+			FROM products p
+			WHERE v.variant_id = $1
+			  AND p.id = v.product_id
+			  AND p.deleted_at IS NULL
+			RETURNING v.stock_quantity + $2, v.stock_quantity`,
 			*item.Item.VariantID, item.Quantity).Scan(&before, &after)
 	} else {
 		err = tx.QueryRow(ctx, `
 			UPDATE products
 			SET stock_quantity = COALESCE(stock_quantity, 0) - $2, updated_at = CURRENT_TIMESTAMP
-			WHERE id = $1
+			WHERE id = $1 AND deleted_at IS NULL
 			RETURNING stock_quantity + $2, stock_quantity`,
 			item.Item.ProductID, item.Quantity).Scan(&before, &after)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, 0, fmt.Errorf("%w: product %d is archived or unavailable", ErrProductNotSellable, item.Item.ProductID)
 	}
 	if err != nil {
 		return 0, 0, fmt.Errorf("reduce stock for product %d: %w", item.Item.ProductID, err)

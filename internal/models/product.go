@@ -24,6 +24,19 @@ const (
 	ProductTypeMultiple ProductType = "Multiple"
 )
 
+// ProductAPIErrorCode is the machine-readable code returned by product and
+// inventory mutations when a product lifecycle rule rejects the request.
+type ProductAPIErrorCode string
+
+const (
+	ProductErrorValidation      ProductAPIErrorCode = "VALIDATION_ERROR"
+	ProductErrorNotFound        ProductAPIErrorCode = "PRODUCT_NOT_FOUND"
+	ProductErrorVariantNotFound ProductAPIErrorCode = "VARIANT_NOT_FOUND"
+	ProductErrorInUse           ProductAPIErrorCode = "PRODUCT_IN_USE"
+	ProductErrorArchived        ProductAPIErrorCode = "PRODUCT_ARCHIVED"
+	ProductErrorInternal        ProductAPIErrorCode = "INTERNAL_ERROR"
+)
+
 // ProductListItem is the compact admin catalog representation.
 type ProductListItem struct {
 	ProductID int64         `json:"product_id"`

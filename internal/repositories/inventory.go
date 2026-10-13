@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/esc-chula/intania-shop-api/internal/models"
 	"github.com/jackc/pgx/v5"
@@ -35,9 +36,12 @@ func (r *InventoryRepository) Adjust(ctx context.Context, productID int64, reque
 	}
 	q := `SELECT COALESCE(stock_quantity,0) FROM ` + target + ` WHERE `
 	if target == "products" {
-		q += `id=$1 FOR UPDATE`
+		q += `id=$1 AND deleted_at IS NULL FOR UPDATE`
 	} else {
-		q += `variant_id=$1 AND product_id=$2 FOR UPDATE`
+		// Lock the parent as well as the variant. Product archival takes a
+		// FOR UPDATE lock on that parent, so this makes an adjustment and an
+		// archive serialize instead of allowing stock history after archival.
+		q = `SELECT COALESCE(v.stock_quantity,0) FROM variants v JOIN products p ON p.id=v.product_id WHERE v.variant_id=$1 AND v.product_id=$2 AND p.deleted_at IS NULL FOR UPDATE OF v, p`
 	}
 	if e = func() pgx.Row {
 		if target == "variants" {
@@ -45,6 +49,9 @@ func (r *InventoryRepository) Adjust(ctx context.Context, productID int64, reque
 		}
 		return tx.QueryRow(ctx, q, id)
 	}().Scan(&before); e != nil {
+		if errors.Is(e, pgx.ErrNoRows) {
+			return models.StockTransaction{}, r.productLifecycleError(ctx, productID)
+		}
 		return models.StockTransaction{}, fmt.Errorf("lock stock: %w", e)
 	}
 	after := before + request.QuantityChange
@@ -52,9 +59,9 @@ func (r *InventoryRepository) Adjust(ctx context.Context, productID int64, reque
 		return models.StockTransaction{}, fmt.Errorf("insufficient stock")
 	}
 	if target == "products" {
-		_, e = tx.Exec(ctx, `UPDATE products SET stock_quantity=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, after)
+		_, e = tx.Exec(ctx, `UPDATE products SET stock_quantity=$2,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND deleted_at IS NULL`, id, after)
 	} else {
-		_, e = tx.Exec(ctx, `UPDATE variants SET stock_quantity=$2 WHERE variant_id=$1`, id, after)
+		_, e = tx.Exec(ctx, `UPDATE variants v SET stock_quantity=$2 FROM products p WHERE v.variant_id=$1 AND p.id=v.product_id AND p.deleted_at IS NULL`, id, after)
 	}
 	if e != nil {
 		return models.StockTransaction{}, fmt.Errorf("update stock: %w", e)
@@ -72,6 +79,21 @@ func (r *InventoryRepository) Adjust(ctx context.Context, productID int64, reque
 		return models.StockTransaction{}, fmt.Errorf("commit stock adjustment: %w", e)
 	}
 	return out, nil
+}
+
+func (r *InventoryRepository) productLifecycleError(ctx context.Context, productID int64) error {
+	var archived bool
+	err := r.pool.QueryRow(ctx, `SELECT deleted_at IS NOT NULL FROM products WHERE id=$1`, productID).Scan(&archived)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrProductNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read product lifecycle: %w", err)
+	}
+	if archived {
+		return ErrProductArchived
+	}
+	return ErrProductNotFound
 }
 
 func (r *InventoryRepository) ListProductTransactions(ctx context.Context, productID int64, offset, limit int32) (models.StockTransactionListResponse, error) {

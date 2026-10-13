@@ -280,6 +280,7 @@ func resolveProjectProducts(ctx context.Context, queryer promotionQueryer, proje
 		SELECT pp.project_product_id, pp.project_id, pp.product_id,
 		       pp.variant_id, pp.project_price::text
 		FROM project_products pp
+		JOIN products product ON product.id = pp.product_id AND product.deleted_at IS NULL
 		JOIN ` + requestedTable + `
 		  ON pp.product_id = requested.product_id
 		 AND pp.variant_id IS NOT DISTINCT FROM requested.variant_id

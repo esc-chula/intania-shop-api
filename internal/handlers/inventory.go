@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/esc-chula/intania-shop-api/internal/middlewares"
 	"github.com/esc-chula/intania-shop-api/internal/models"
+	"github.com/esc-chula/intania-shop-api/internal/repositories"
 	"github.com/go-chi/chi/v5"
 	"net/http"
 	"strconv"
@@ -45,6 +47,14 @@ func (h *InventoryHandler) adjust(w http.ResponseWriter, r *http.Request) {
 	}
 	out, e := h.inventory.Adjust(r.Context(), productID, input, strconv.FormatInt(identity.UserID, 10))
 	if e != nil {
+		if errors.Is(e, repositories.ErrProductArchived) {
+			writeProductError(w, r, http.StatusConflict, models.ProductErrorArchived, "Product is archived")
+			return
+		}
+		if errors.Is(e, repositories.ErrProductNotFound) {
+			writeProductError(w, r, http.StatusNotFound, models.ProductErrorNotFound, "Product not found")
+			return
+		}
 		writeError(w, 400, e.Error())
 		return
 	}
