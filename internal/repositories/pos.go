@@ -47,7 +47,7 @@ const posResolvedItemColumns = `pp.product_id, pp.variant_id,
        pp.project_price::text`
 
 const posResolvedItemJoins = `
-JOIN products p ON p.id = pp.product_id
+JOIN products p ON p.id = pp.product_id AND p.deleted_at IS NULL
 LEFT JOIN variants v
   ON v.variant_id = pp.variant_id AND v.product_id = pp.product_id`
 

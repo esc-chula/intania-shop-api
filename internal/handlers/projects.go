@@ -241,6 +241,9 @@ func writeProjectErrorResponse(writer http.ResponseWriter, request *http.Request
 	case errors.Is(err, repositories.ErrProjectSaleDatesConflict):
 		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict,
 			"Project sale dates cannot exclude an existing order")
+	case errors.Is(err, repositories.ErrProjectArchivedProduct):
+		writeProjectError(writer, request, http.StatusConflict, models.ProjectErrorConflict,
+			"Project with archived products cannot be scheduled as current or upcoming")
 	case errors.Is(err, repositories.ErrOrderNotFound):
 		writeProjectError(writer, request, http.StatusNotFound, models.ProjectErrorOrderNotFound, "Order not found")
 	case errors.Is(err, repositories.ErrProjectCompleted):
