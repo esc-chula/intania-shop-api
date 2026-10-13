@@ -1,0 +1,74 @@
+@baseUrl = http://localhost:8080
+@adminToken = replace-with-admin-token
+
+# Set this after the Create response. It must be a product not assigned to a
+# current or upcoming project. Supplying a product image URL is intentional:
+# archive never deletes the corresponding GCS object.
+@archivableProductId = replace-with-created-product-id
+
+# Set this to a product assigned to a NOT_STARTED or ACTIVE project. It may be
+# used by a Promotion; either way archive must be rejected.
+@inUseProductId = replace-with-live-project-product-id
+
+### Create a product that may be archived
+POST {{baseUrl}}/products
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Soft delete manual test product",
+  "base_price": "199.00",
+  "status": "InStock",
+  "category": "Manual test",
+  "stock_quantity": 3,
+  "images": ["https://storage.googleapis.com/replace-with-test-bucket/products/archive-proof.png"],
+  "product_type": "Single",
+  "sku": "ARCHIVE-MANUAL-001"
+}
+
+### Archive an unused or completed-project product — expect 204 and no body
+DELETE {{baseUrl}}/products/{{archivableProductId}}
+Authorization: Bearer {{adminToken}}
+
+### Repeat archive — expect the same idempotent 204
+DELETE {{baseUrl}}/products/{{archivableProductId}}
+Authorization: Bearer {{adminToken}}
+
+### Normal product detail hides archived products — expect 404 PRODUCT_NOT_FOUND
+GET {{baseUrl}}/products/{{archivableProductId}}
+Authorization: Bearer {{adminToken}}
+
+### Normal catalogue and search exclude archived products — expect no matching item
+GET {{baseUrl}}/products?page=1&page_size=100
+Authorization: Bearer {{adminToken}}
+
+###
+GET {{baseUrl}}/products/search?q=Soft%20delete%20manual%20test%20product&page=1&page_size=20
+Authorization: Bearer {{adminToken}}
+
+### Archived products cannot be edited — expect 409 PRODUCT_ARCHIVED
+PUT {{baseUrl}}/products/{{archivableProductId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "name": "must not update" }
+
+### Archived products cannot receive stock adjustments — expect 409 PRODUCT_ARCHIVED
+POST {{baseUrl}}/products/{{archivableProductId}}/stock/adjust
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "quantity_change": 1, "reason": "must not adjust archived stock" }
+
+### A product assigned to a NOT_STARTED or ACTIVE project cannot be archived
+# Expect 409 and a stable PRODUCT_IN_USE code. This rule applies even if the
+# product is also referenced by that project's Promotion.
+DELETE {{baseUrl}}/products/{{inUseProductId}}
+Authorization: Bearer {{adminToken}}
+
+# Post-check in the database or cloud console (read-only): the archived row's
+# deleted_at is set, variants/stock_transactions/order_items retain their IDs,
+# and this file deliberately makes no GCS deletion request. A checkout cart
+# containing an archived product is rejected transactionally as
+# PRODUCT_NOT_SELLABLE; that race-safe path is covered by repository integration
+# tests because a live project assignment itself blocks normal archival.
