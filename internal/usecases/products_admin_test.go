@@ -48,7 +48,7 @@ func TestProductAdminDeleteArchivesUsingBangkokDate(t *testing.T) {
 	if store.archiveProductID != 9 {
 		t.Fatalf("archive product ID = %d, want 9", store.archiveProductID)
 	}
-	if got, want := store.archiveToday.Time.Format("2006-01-02"), "2026-10-14"; got != want {
+	if got, want := store.archiveToday.Format("2006-01-02"), "2026-10-14"; got != want {
 		t.Fatalf("archive date = %s, want %s", got, want)
 	}
 }
