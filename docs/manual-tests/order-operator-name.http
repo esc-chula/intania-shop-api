@@ -1,0 +1,81 @@
+@baseUrl = http://localhost:8080
+@adminToken = replace-with-admin-token
+# Use an ACTIVE project and a sellable product with enough stock in a disposable DB.
+@projectId = replace-with-active-project-id
+@productId = replace-with-project-product-id
+@orderId = replace-with-created-order-id
+# Change keys when starting a fresh test run; keep them identical for retry checks.
+@namedKey = operator-name-test-1
+@fallbackKey = operator-name-test-2
+
+### Named operator — 201; operator_name is "มายด์", staff is the logged-in account
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{namedKey}}
+Content-Type: application/json
+
+{"operator_name":"  มายด์  ","buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{productId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"999999.00","no_change":false}}
+
+### Normalized retry — 200, Idempotency-Replayed: true; same order, no extra stock reduction
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{namedKey}}
+Content-Type: application/json
+
+{"operator_name":"มายด์","buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{productId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"999999.00","no_change":false}}
+
+### Changed operator with the same key — 409 IDEMPOTENCY_KEY_REUSED
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{namedKey}}
+Content-Type: application/json
+
+{"operator_name":"กิตติ","buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{productId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"999999.00","no_change":false}}
+
+### Omitted operator — 201; operator_name equals staff.full_name; DB value is NULL
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{fallbackKey}}
+Content-Type: application/json
+
+{"buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{productId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"999999.00","no_change":false}}
+
+### Explicit null retries the omitted request — 200 with original staff snapshot
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{fallbackKey}}
+Content-Type: application/json
+
+{"operator_name":null,"buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{productId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"999999.00","no_change":false}}
+
+### Blank also retries the omitted request — 200; same operator name
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{fallbackKey}}
+Content-Type: application/json
+
+{"operator_name":"   ","buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{productId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"999999.00","no_change":false}}
+
+### Invalid type — 400 VALIDATION_ERROR; no order or stock changes
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: operator-invalid-type
+Content-Type: application/json
+
+{"operator_name":123,"buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{productId}},"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"999999.00","no_change":false}}
+
+### Detail — 200; same resolved operator name as checkout
+GET {{baseUrl}}/projects/{{projectId}}/orders/{{orderId}}
+Authorization: Bearer {{adminToken}}
+
+### History — 200; named and fallback orders retain their individual names
+GET {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+
+### Excel — final column is Operator Name; original Staff Name/Email columns remain
+GET {{baseUrl}}/projects/{{projectId}}/orders/export
+Authorization: Bearer {{adminToken}}
+
+# Automated tests also cover the 100/101 Unicode character limit, QR checkout,
+# raw NULL storage, account renames, stock actors, old fingerprint compatibility,
+# pre-migration rows, and migration rollback/reapply on an isolated database.
