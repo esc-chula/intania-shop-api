@@ -148,6 +148,7 @@ var orderExportColumns = []string{
 	"Buyer Gender", "Buyer Age", "Buyer Student/Alumni Year",
 	"Product Name", "Size", "Color", "Quantity", "Unit Price", "Line Total",
 	"Promotion Name", "Discount", "Subtotal", "Net Total",
+	"Operator Name",
 }
 
 func buildOrderExportWorkbook(orders []models.POSOrder) (*excelize.File, error) {
@@ -198,6 +199,7 @@ func buildOrderExportWorkbook(orders []models.POSOrder) (*excelize.File, error) 
 				discount,
 				order.Subtotal.String(),
 				order.NetTotal.String(),
+				order.OperatorName,
 			}
 			for column, value := range values {
 				cell, err := excelize.CoordinatesToCellName(column+1, row)

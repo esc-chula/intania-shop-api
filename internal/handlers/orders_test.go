@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,7 +11,53 @@ import (
 	"github.com/esc-chula/intania-shop-api/internal/models"
 	"github.com/esc-chula/intania-shop-api/internal/usecases"
 	"github.com/go-chi/chi/v5"
+	"github.com/xuri/excelize/v2"
 )
+
+func TestOrderExportAppendsResolvedOperatorNameAndPreservesStaff(t *testing.T) {
+	first := posTestOrder(t)
+	first.OperatorName = "มายด์"
+	first.Items = append(first.Items, first.Items[0])
+	second := posTestOrder(t) // Fallback name already resolved by persistence.
+	workbook, err := buildOrderExportWorkbook([]models.POSOrder{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := workbook.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	// Read the serialized workbook, not only its in-memory cell values.
+	buffer, err := workbook.WriteToBuffer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported, err := excelize.OpenReader(buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := exported.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	rows, err := exported.GetRows("Orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 || len(rows[0]) != 19 || rows[0][18] != "Operator Name" || rows[0][3] != "Staff Name" || rows[0][4] != "Staff Email" {
+		t.Fatalf("export rows = %v", rows)
+	}
+	for index, want := range []string{"มายด์", "มายด์", "Ada"} {
+		t.Run(fmt.Sprintf("item row %d", index+2), func(t *testing.T) {
+			row := rows[index+1]
+			if len(row) != 19 || row[18] != want || row[3] != "Ada" || row[4] != "ada@example.com" {
+				t.Fatalf("row = %v", row)
+			}
+		})
+	}
+}
 
 func TestOrderHandlersRejectInvalidStaffIDBeforeCallingService(t *testing.T) {
 	tests := []struct {
