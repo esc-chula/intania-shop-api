@@ -155,6 +155,11 @@ func newPOSCheckoutCommand(projectID, staffUserID int64, idempotencyKey string, 
 		return models.POSCheckoutCommand{}, err
 	}
 
+	operatorName, err := optionalPOSText(request.OperatorName, models.POSOperatorNameMaxLength, "Operator name")
+	if err != nil {
+		return models.POSCheckoutCommand{}, err
+	}
+
 	command := models.POSCheckoutCommand{
 		ProjectID:      projectID,
 		StaffUserID:    staffUserID,
@@ -162,6 +167,7 @@ func newPOSCheckoutCommand(projectID, staffUserID int64, idempotencyKey string, 
 		Buyer:          buyer,
 		Items:          request.Items,
 		Payment:        payment,
+		OperatorName:   operatorName,
 	}
 
 	fingerprint, err := posCheckoutFingerprint(command)
@@ -275,18 +281,21 @@ func optionalPOSText(value *string, maxLength int, label string) (*string, error
 // posCheckoutFingerprint hashes the normalized request so the same
 // Idempotency-Key can only replay the request that created the order.
 func posCheckoutFingerprint(command models.POSCheckoutCommand) (string, error) {
+	// ponytail: omit absent names to preserve pre-operator checkout fingerprints.
 	encoded, err := json.Marshal(struct {
-		ProjectID   int64                       `json:"project_id"`
-		StaffUserID int64                       `json:"staff_user_id"`
-		Buyer       models.POSBuyer             `json:"buyer"`
-		Items       []models.POSCartItemRequest `json:"items"`
-		Payment     models.POSPaymentRequest    `json:"payment"`
+		ProjectID    int64                       `json:"project_id"`
+		StaffUserID  int64                       `json:"staff_user_id"`
+		Buyer        models.POSBuyer             `json:"buyer"`
+		Items        []models.POSCartItemRequest `json:"items"`
+		Payment      models.POSPaymentRequest    `json:"payment"`
+		OperatorName *string                     `json:"operator_name,omitempty"`
 	}{
-		ProjectID:   command.ProjectID,
-		StaffUserID: command.StaffUserID,
-		Buyer:       command.Buyer,
-		Items:       command.Items,
-		Payment:     command.Payment,
+		ProjectID:    command.ProjectID,
+		StaffUserID:  command.StaffUserID,
+		Buyer:        command.Buyer,
+		Items:        command.Items,
+		Payment:      command.Payment,
+		OperatorName: command.OperatorName,
 	})
 	if err != nil {
 		return "", fmt.Errorf("fingerprint POS checkout request: %w", err)
