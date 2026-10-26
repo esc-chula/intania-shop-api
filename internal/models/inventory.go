@@ -11,9 +11,13 @@ type AdjustStockRequest struct {
 	ReferenceType     *string `json:"reference_type"`
 	ReferenceID       *int64  `json:"reference_id"`
 	ConfirmationImage *string `json:"confirmation_image"`
+	OperatorName      *string `json:"operator_name"`
 }
 
-// StockTransaction records an immutable inventory change.
+// StockTransaction records an immutable inventory change. CreatedBy displays
+// the explicit adjustment name, the linked POS order's operator snapshot, or
+// the acting account's current name/email. Unresolved actors keep their stored
+// value, and unattributed transactions remain null.
 type StockTransaction struct {
 	TransactionID     int64     `json:"transaction_id"`
 	ProductID         *int64    `json:"product_id"`

@@ -1483,6 +1483,11 @@ components:
       type: object
       required: [quantity_change, reason]
       properties:
+        operator_name:
+          type: [string, "null"]
+          maxLength: 100
+          description: Optional self-reported operator name for this adjustment. Trimmed before storage; omitted, null, or blank values use the authenticated account name/email in responses. Does not change the stored authenticated user ID or permissions.
+          example: มายด์
         variant_id: { type: [integer, "null"], format: int64 }
         quantity_change: { type: integer, format: int32, not: { const: 0 } }
         reason: { type: string }
@@ -1504,7 +1509,10 @@ components:
         notes: { type: [string, "null"] }
         reference_type: { type: [string, "null"] }
         reference_id: { type: [integer, "null"], format: int64 }
-        created_by: { type: [string, "null"] }
+        created_by:
+          type: [string, "null"]
+          description: Display name of the operator. Uses the explicit stock adjustment operator_name first; POS transactions use the linked order's operator_name or staff name snapshot. Other transactions use the account's current name, then email, then the stored actor value (including legacy labels or IDs). Null for unattributed transactions. The database retains the authenticated user ID independently.
+          example: มายด์
         confirmation_image: { type: [string, "null"], format: uri }
         product_name: { type: string }
         created_at: { type: string, format: date-time }

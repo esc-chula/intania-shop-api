@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"fmt"
+
 	"github.com/esc-chula/intania-shop-api/internal/models"
 )
 
@@ -21,6 +22,11 @@ func (s *InventoryService) Adjust(ctx context.Context, productID int64, r models
 	if productID <= 0 || r.QuantityChange == 0 {
 		return models.StockTransaction{}, fmt.Errorf("product ID and non-zero quantity change are required")
 	}
+	operatorName, err := optionalPOSText(r.OperatorName, models.POSOperatorNameMaxLength, "Operator name")
+	if err != nil {
+		return models.StockTransaction{}, err
+	}
+	r.OperatorName = operatorName
 	return s.inventory.Adjust(ctx, productID, r, actor)
 }
 
