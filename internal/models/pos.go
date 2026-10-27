@@ -141,8 +141,9 @@ type PricingPromotionItem struct {
 	Quantity  int32
 }
 
-// PricingPromotionItemGroup contains interchangeable options for one
-// required Promotion group.
+// PricingPromotionItemGroup contains options for one required Promotion group.
+// Concrete variants of one product with equal Quantity pool their Cart pieces;
+// other groups treat each option as a complete alternative bundle.
 type PricingPromotionItemGroup struct {
 	Options []PricingPromotionItem
 }

@@ -179,6 +179,18 @@ func pricingPromotionGroups(promotion models.PricingPromotion) []models.PricingP
 	return groups
 }
 
+// pricingGroupQuantity counts individual pieces for interchangeable variants.
+// Other OR groups count complete option bundles as one unit per application.
+func pricingGroupQuantity(group models.PricingPromotionItemGroup) int64 {
+	first := group.Options[0]
+	for _, option := range group.Options {
+		if option.VariantID == nil || option.ProductID != first.ProductID || option.Quantity != first.Quantity {
+			return 1
+		}
+	}
+	return int64(first.Quantity)
+}
+
 func calculatePricingSubtotal(cart []models.PricingCartLine) (models.THBAmount, error) {
 	var subtotal models.THBAmount
 
@@ -211,22 +223,30 @@ func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCa
 	}
 	groups := pricingPromotionGroups(promotion)
 	available := make([][]availableOption, len(groups))
+	groupQuantities := make([]int64, len(groups))
 	var applications int64
 	for groupIndex, group := range groups {
+		// Inspect the full definition, including options absent from the Cart.
+		groupQuantities[groupIndex] = pricingGroupQuantity(group)
 		var capacity int64
 		for optionIndex, option := range group.Options {
+			quantity := int64(option.Quantity)
+			if groupQuantities[groupIndex] > 1 {
+				quantity = 1
+			}
 			line, exists := cartByIdentity[newPricingItemKey(option.ProductID, option.VariantID)]
-			if !exists || line.Quantity < option.Quantity {
+			if !exists || int64(line.Quantity) < quantity {
 				continue
 			}
-			lineTotal, err := line.UnitPrice.Mul(int64(option.Quantity))
+			lineTotal, err := line.UnitPrice.Mul(quantity)
 			if err != nil {
 				return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d group %d option %d bundle total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, groupIndex+1, optionIndex+1, err)
 			}
-			count := int64(line.Quantity) / int64(option.Quantity)
+			count := int64(line.Quantity) / quantity
 			capacity += count
 			available[groupIndex] = append(available[groupIndex], availableOption{price: lineTotal, count: count})
 		}
+		capacity /= groupQuantities[groupIndex]
 		if capacity == 0 {
 			return pricingCandidate{}, false, nil
 		}
@@ -240,7 +260,7 @@ func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCa
 		// ponytail: identities cannot overlap across groups, so choosing the
 		// highest-value options independently maximizes the total discount.
 		slices.SortStableFunc(options, func(a, b availableOption) int { return cmp.Compare(b.price.Satang(), a.price.Satang()) })
-		remaining := applications
+		remaining := applications * groupQuantities[groupIndex]
 		for _, option := range options {
 			count := min(remaining, option.count)
 			total, err := option.price.Mul(count)

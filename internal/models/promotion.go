@@ -21,9 +21,10 @@ type ProjectPromotionItemInput struct {
 	Quantity  int32  `json:"quantity"`
 }
 
-// ProjectPromotionItemGroupInput contains alternatives for one required part
-// of a Promotion. Exactly one option from every group must be present in a
-// Cart for the Promotion to apply.
+// ProjectPromotionItemGroupInput describes one required part of a Promotion.
+// When all options are concrete variants of one product with equal Quantity,
+// selected variant quantities are pooled to satisfy that per-set count.
+// Other groups require one complete option per application.
 type ProjectPromotionItemGroupInput struct {
 	Options []ProjectPromotionItemInput `json:"options"`
 }
@@ -65,8 +66,8 @@ type ProjectPromotionItem struct {
 	UnitPrice   THBAmount `json:"unit_price"`
 }
 
-// ProjectPromotionItemGroup is an enriched required group. Options are ORed
-// within the group while groups themselves are ANDed together.
+// ProjectPromotionItemGroup is an enriched required group with the same
+// pooling rules as ProjectPromotionItemGroupInput. All groups are required.
 type ProjectPromotionItemGroup struct {
 	Options []ProjectPromotionItem `json:"options"`
 }
