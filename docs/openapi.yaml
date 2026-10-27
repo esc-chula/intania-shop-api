@@ -1242,13 +1242,14 @@ components:
     AppliedProjectPromotion:
       type: object
       additionalProperties: false
+      description: Snapshot totals across every application of the selected promotion. Prices in promotion CRUD remain per set.
       required: [promotion_id, name, original_bundle_price, promotion_price, discount]
       properties:
         promotion_id: { type: integer, format: int64, minimum: 1 }
         name: { type: string, maxLength: 150 }
-        original_bundle_price: { $ref: "#/components/schemas/THBAmount" }
-        promotion_price: { $ref: "#/components/schemas/THBAmount" }
-        discount: { $ref: "#/components/schemas/THBAmount" }
+        original_bundle_price: { $ref: "#/components/schemas/THBAmount", description: Total regular price of all matched quantities across every application }
+        promotion_price: { $ref: "#/components/schemas/THBAmount", description: Per-set promotion price multiplied by the number of applications }
+        discount: { $ref: "#/components/schemas/THBAmount", description: Total original_bundle_price minus total promotion_price }
     POSQuote:
       type: object
       additionalProperties: false
@@ -1259,7 +1260,7 @@ components:
         subtotal: { $ref: "#/components/schemas/THBAmount" }
         applied_promotion:
           oneOf: [{ $ref: "#/components/schemas/AppliedProjectPromotion" }, { type: "null" }]
-          description: At most one promotion, applied at most once. Highest discount wins; ties use the lowest promotion_id.
+          description: At most one promotion, repeated for every complete set. Options may differ between applications. Highest total discount wins; ties use the lowest promotion_id. Unmatched quantities remain at regular price.
         discount: { $ref: "#/components/schemas/THBAmount" }
         net_total: { $ref: "#/components/schemas/THBAmount" }
         quoted_at: { type: string, format: date-time }
@@ -1672,12 +1673,12 @@ components:
         data:
           project_id: 7
           items:
-            - { product_id: 10, variant_id: 22, product_name: Intania Shirt, size: M, color: Navy, image_url: "https://example.com/shirt.png", quantity: 1, unit_price: "299.00", line_total: "299.00", available_quantity: 20 }
-            - { product_id: 11, variant_id: null, product_name: Enamel Pin, size: null, color: null, image_url: "https://example.com/pin.png", quantity: 1, unit_price: "59.00", line_total: "59.00", available_quantity: 50 }
-          subtotal: "358.00"
-          applied_promotion: { promotion_id: 3, name: Shirt and pin set, original_bundle_price: "358.00", promotion_price: "329.00", discount: "29.00" }
-          discount: "29.00"
-          net_total: "329.00"
+            - { product_id: 10, variant_id: 22, product_name: Intania Shirt, size: M, color: Navy, image_url: "https://example.com/shirt.png", quantity: 2, unit_price: "299.00", line_total: "598.00", available_quantity: 20 }
+            - { product_id: 11, variant_id: null, product_name: Enamel Pin, size: null, color: null, image_url: "https://example.com/pin.png", quantity: 2, unit_price: "59.00", line_total: "118.00", available_quantity: 50 }
+          subtotal: "716.00"
+          applied_promotion: { promotion_id: 3, name: Shirt and pin set, original_bundle_price: "716.00", promotion_price: "658.00", discount: "58.00" }
+          discount: "58.00"
+          net_total: "658.00"
           quoted_at: "2026-09-05T10:30:00+07:00"
     PaymentSlipEnvelope:
       allOf:
