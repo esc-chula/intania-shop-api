@@ -1118,12 +1118,17 @@ components:
     ProjectPromotionItemGroupInput:
       type: object
       additionalProperties: false
+      description: If every option is a concrete variant of the same product_id with equal quantity, combine Cart quantities from those selected variants to meet the per-set count. Otherwise each application requires one complete option. Unselected variants never contribute.
       required: [options]
+      example:
+        options:
+          - { product_id: 10, variant_id: 21, quantity: 2 }
+          - { product_id: 10, variant_id: 22, quantity: 2 }
       properties:
         options:
           type: array
           minItems: 1
-          description: One of these options must be present. Options are ORed within this group.
+          description: Selected variants may combine within a set under this group's pooling rule. Other option groups use OR semantics.
           items: { $ref: "#/components/schemas/ProjectPromotionItemInput" }
     ProjectPromotionMutationRequest:
       type: object
@@ -1136,7 +1141,7 @@ components:
         item_groups:
           type: array
           minItems: 1
-          description: All groups are required (AND); options within each group are alternatives (OR). Each product_id/variant_id reference must be unique across all groups.
+          description: All groups are required (AND). Equal-quantity variants of one product combine within their group; other groups use complete alternatives (OR). Each product_id/variant_id reference must be unique across all groups.
           items: { $ref: "#/components/schemas/ProjectPromotionItemGroupInput" }
     ProjectPromotionItem:
       type: object
@@ -1154,6 +1159,7 @@ components:
     ProjectPromotionItemGroup:
       type: object
       additionalProperties: false
+      description: Uses the pooling rules of ProjectPromotionItemGroupInput; only explicitly listed variants may combine.
       required: [options]
       properties:
         options:
@@ -1164,8 +1170,9 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Hydrated project promotion. Every item group is required, while options
-        inside a group are alternatives. Price ranges are calculated from current
+        Hydrated project promotion. Every item group is required. Equal-quantity
+        variants of one product combine within a set; other groups use complete
+        alternatives. Price ranges are calculated from current
         Project Product prices and represent the minimum/maximum eligible bundle.
       required: [promotion_id, project_id, name, item_groups, original_bundle_price_min, original_bundle_price_max, promotion_price, discount_min, discount_max, created_at, updated_at]
       properties:
@@ -1260,7 +1267,7 @@ components:
         subtotal: { $ref: "#/components/schemas/THBAmount" }
         applied_promotion:
           oneOf: [{ $ref: "#/components/schemas/AppliedProjectPromotion" }, { type: "null" }]
-          description: At most one promotion, repeated for every complete set. Options may differ between applications. Highest total discount wins; ties use the lowest promotion_id. Unmatched quantities remain at regular price.
+          description: At most one promotion, repeated for every complete set. Equal-quantity variants of one product may combine within a group to complete a set. Highest total discount wins; ties use the lowest promotion_id. Unselected variants and unmatched quantities remain at regular price. Promotion price remains fixed per set even when variant prices differ.
         discount: { $ref: "#/components/schemas/THBAmount" }
         net_total: { $ref: "#/components/schemas/THBAmount" }
         quoted_at: { type: string, format: date-time }

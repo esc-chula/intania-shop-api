@@ -9,6 +9,8 @@
 @orderId = replace-with-created-order-id
 # Change this key for a new checkout; preserve it for the replay below.
 @repeatKey = repeated-promotion-test-1
+@poolKey = pooled-variant-test-1
+@unselectedVariantId = replace-with-unselected-variant-id
 
 ### Create (size L OR XL) AND pin
 POST {{baseUrl}}/projects/{{projectId}}/promotions
@@ -126,3 +128,64 @@ Content-Type: application/json
 # Set orderId from checkout. Totals remain unchanged if the promotion is later edited/deleted.
 GET {{baseUrl}}/projects/{{projectId}}/orders/{{orderId}}
 Authorization: Bearer {{adminToken}}
+
+### Prepare any two selected sizes for 400.00 — 200, no payload/schema changes
+# Use the real backend (frontend mock has separate pricing logic).
+# On a disposable ACTIVE project with only this promotion, set L and XL prices to 400.00.
+# Keep another assigned size at 400.00 but exclude it from the options; set unselectedVariantId.
+# Ensure enough stock. Only the listed L/XL variants may complete the two-piece set.
+PUT {{baseUrl}}/projects/{{projectId}}/promotions/{{promotionId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Any two selected sizes",
+  "promotion_price": "400.00",
+  "item_groups": [{ "options": [
+    { "product_id": {{shirtProductId}}, "variant_id": {{largeVariantId}}, "quantity": 2 },
+    { "product_id": {{shirtProductId}}, "variant_id": {{xlargeVariantId}}, "quantity": 2 }
+  ] }]
+}
+
+### One L plus one XL — 200, subtotal=800.00, discount=400.00, net_total=400.00
+# applied_promotion: original_bundle_price=800.00, promotion_price=400.00, discount=400.00.
+POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":1},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":1}]}
+
+### Three L plus one XL — 200, subtotal=1600.00, discount=800.00, net_total=800.00
+# All four selected pieces make two sets, including the remainder from each size.
+POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":3},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":1}]}
+
+### Unselected size cannot complete a set — 200, applied_promotion=null, discount=0.00, net_total=800.00
+POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":1},{"product_id":{{shirtProductId}},"variant_id":{{unselectedVariantId}},"quantity":1}]}
+
+### Checkout mixed pair — 201, same 800.00 / 400.00 / 400.00 totals, change_amount=100.00
+# Stock decreases by L:1 and XL:1; one aggregate promotion snapshot is stored.
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{poolKey}}
+Content-Type: application/json
+
+{"buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":1},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"500.00","no_change":false}}
+
+### Retry mixed pair — 200, Idempotency-Replayed: true; original snapshot, no additional stock change
+POST {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+Idempotency-Key: {{poolKey}}
+Content-Type: application/json
+
+{"buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":1},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":1}],"payment":{"method":"REAL_MONEY","received_amount":"500.00","no_change":false}}
+
+# For differing prices L=400.00 and XL=450.00, the same pair still costs the fixed
+# promotion_price 400.00: original_bundle_price=850.00 and discount=450.00.
