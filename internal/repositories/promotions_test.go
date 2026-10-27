@@ -57,3 +57,44 @@ func TestValidatePromotionGroupPriceUsesMinimumAlternativeBundle(t *testing.T) {
 		t.Fatalf("error = %v, want ErrPromotionPriceExceedsBundle", err)
 	}
 }
+
+func TestPooledVariantPromotionPriceRangeAndGuard(t *testing.T) {
+	amount := func(value string) models.THBAmount {
+		parsed, err := models.ParseTHBAmount(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parsed
+	}
+	small, medium := int64(21), int64(22)
+	groups := []models.ProjectPromotionItemGroupInput{{Options: []models.ProjectPromotionItemInput{
+		{ProductID: 10, VariantID: &small, Quantity: 2},
+		{ProductID: 10, VariantID: &medium, Quantity: 2},
+	}}}
+	for _, price := range []string{"400.00", "800.00", "800.01"} {
+		t.Run(price, func(t *testing.T) {
+			err := validatePromotionPrice(models.ProjectPromotionMutation{PromotionPrice: amount(price), ItemGroups: groups}, []ProjectProductAssignment{
+				{ProductID: 10, VariantID: &small, ProjectPrice: amount("400.00")},
+				{ProductID: 10, VariantID: &medium, ProjectPrice: amount("450.00")},
+			})
+			if price == "800.01" {
+				if !errors.Is(err, ErrPromotionPriceExceedsBundle) {
+					t.Fatalf("error=%v, want price above cheapest pair rejected", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	promotions := []models.ProjectPromotion{{PromotionID: 1, PromotionPrice: amount("400.00"), ItemGroups: []models.ProjectPromotionItemGroup{{Options: []models.ProjectPromotionItem{
+		{ProductID: 10, VariantID: &small, Quantity: 2, UnitPrice: amount("400.00")},
+		{ProductID: 10, VariantID: &medium, Quantity: 2, UnitPrice: amount("450.00")},
+	}}}}}
+	if err := calculatePromotionTotals(promotions); err != nil {
+		t.Fatal(err)
+	}
+	got := promotions[0]
+	if got.OriginalBundlePriceMin.String() != "800.00" || got.OriginalBundlePriceMax.String() != "900.00" || got.DiscountMin.String() != "400.00" || got.DiscountMax.String() != "500.00" {
+		t.Fatalf("pooled variants changed per-set price ranges: %+v", got)
+	}
+}

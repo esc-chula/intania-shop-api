@@ -178,6 +178,45 @@ func TestPOSServiceQuoteAndCheckoutRepeatTheSamePromotion(t *testing.T) {
 	assertAmount(t, *store.plan.Payment.RetainedAmount, "0.00")
 }
 
+func TestPOSServiceQuoteAndCheckoutPoolSelectedVariants(t *testing.T) {
+	store := newPOSCheckoutStore(t)
+	store.snapshot.Items = []models.POSResolvedCartItem{
+		{Item: models.POSResolvedItem{ProductID: 10, VariantID: posInt64Pointer(21), ProjectPrice: posTestAmount(t, "400.00"), StockQuantity: 5}, Quantity: 1},
+		{Item: models.POSResolvedItem{ProductID: 10, VariantID: posInt64Pointer(22), ProjectPrice: posTestAmount(t, "400.00"), StockQuantity: 5}, Quantity: 1},
+	}
+	store.snapshot.Promotions = []models.PricingPromotion{{
+		PromotionID: 3, Name: "Any two selected sizes", PromotionPrice: posTestAmount(t, "400.00"),
+		ItemGroups: []models.PricingPromotionItemGroup{{Options: []models.PricingPromotionItem{
+			{ProductID: 10, VariantID: posInt64Pointer(21), Quantity: 2},
+			{ProductID: 10, VariantID: posInt64Pointer(22), Quantity: 2},
+		}}},
+	}}
+	store.quote = models.POSQuoteSnapshot{
+		Project: models.Project{ProjectID: 7, Status: models.ProjectStatusActive},
+		Items:   store.snapshot.Items, Promotions: store.snapshot.Promotions,
+	}
+	request := posCashCheckoutRequest(t, "500.00", false)
+	request.Items = []models.POSCartItemRequest{
+		{ProductID: 10, VariantID: posInt64Pointer(21), Quantity: 1},
+		{ProductID: 10, VariantID: posInt64Pointer(22), Quantity: 1},
+	}
+	service := NewPOSService(store)
+	quote, err := service.Quote(context.Background(), 7, models.POSCartRequest{Items: request.Items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, replayed, err := service.Checkout(context.Background(), 7, 42, "mixed-variant-pair", request); err != nil || replayed {
+		t.Fatalf("checkout replayed=%t, error=%v", replayed, err)
+	}
+	assertAmount(t, quote.Subtotal, "800.00")
+	assertAmount(t, quote.Discount, "400.00")
+	assertAmount(t, quote.NetTotal, "400.00")
+	if quote.AppliedPromotion == nil || store.plan.AppliedPromotion == nil || *quote.AppliedPromotion != *store.plan.AppliedPromotion || store.plan.NetTotal != quote.NetTotal || store.plan.Discount != quote.Discount {
+		t.Fatalf("quote=%+v, checkout plan=%+v", quote, store.plan)
+	}
+	assertAmount(t, *store.plan.Payment.ChangeAmount, "100.00")
+}
+
 func TestPOSServiceCheckoutRecordsTheTrustedSlipForQRPayments(t *testing.T) {
 	store := newPOSCheckoutStore(t)
 	store.snapshot.Slip = &models.PaymentSlip{
