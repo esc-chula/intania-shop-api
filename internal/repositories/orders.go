@@ -23,6 +23,7 @@ func NewOrderRepository(pool *pgxpool.Pool) *OrderRepository {
 
 const orderHistoryColumns = `o.order_id, o.order_number, o.project_id, o.status::text,
 	o.staff_user_id, o.staff_full_name, o.staff_email,
+	COALESCE(o.operator_name, o.staff_full_name) AS operator_name,
 	o.buyer_gender::text, o.buyer_age, o.buyer_student_alumni_year,
 	o.subtotal::text, o.discount::text, o.net_total::text, o.created_at,
 	pay.method::text, pay.slip_url, pay.received_amount::text,
@@ -244,6 +245,7 @@ func scanOrderHistory(row orderHistoryScanner, extra ...any) (models.POSOrder, e
 	destinations := append([]any{
 		&order.OrderID, &order.OrderNumber, &order.ProjectID, &order.Status,
 		&order.Staff.StaffID, &order.Staff.FullName, &order.Staff.Email,
+		&order.OperatorName,
 		&gender, &order.Buyer.Age, &order.Buyer.StudentAlumniYear,
 		&subtotal, &discount, &netTotal, &order.CreatedAt,
 		&method, &order.Payment.SlipURL, &receivedAmount,

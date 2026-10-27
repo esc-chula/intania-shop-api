@@ -316,11 +316,11 @@ func insertPOSOrder(ctx context.Context, tx pgx.Tx, command models.POSCheckoutCo
 		    order_id, order_number, project_id,
 		    staff_user_id, staff_full_name, staff_email,
 		    buyer_gender, buyer_age, buyer_student_alumni_year,
-		    subtotal, discount, net_total, idempotency_key, request_fingerprint)
+		    subtotal, discount, net_total, idempotency_key, request_fingerprint, operator_name)
 		SELECT reserved.order_id, 'ORD-' || lpad(reserved.order_id::text, 8, '0'), $1,
 		       $2, $3, $4,
 		       $5::pos_buyer_gender, $6, $7,
-		       $8::numeric, $9::numeric, $10::numeric, $11, $12
+		       $8::numeric, $9::numeric, $10::numeric, $11, $12, $13
 		FROM reserved
 		ON CONFLICT (idempotency_key) DO NOTHING
 		RETURNING order_id, order_number`,
@@ -328,7 +328,7 @@ func insertPOSOrder(ctx context.Context, tx pgx.Tx, command models.POSCheckoutCo
 		snapshot.Staff.StaffID, snapshot.Staff.FullName, snapshot.Staff.Email,
 		string(command.Buyer.Gender), command.Buyer.Age, command.Buyer.StudentAlumniYear,
 		plan.Subtotal.String(), plan.Discount.String(), plan.NetTotal.String(),
-		command.IdempotencyKey, command.RequestFingerprint).Scan(&orderID, &orderNumber)
+		command.IdempotencyKey, command.RequestFingerprint, command.OperatorName).Scan(&orderID, &orderNumber)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, "", false, nil
 	}
@@ -482,6 +482,7 @@ func readPOSOrder(ctx context.Context, queryer promotionQueryer, orderID int64) 
 	err := queryer.QueryRow(ctx, `
 		SELECT o.order_id, o.order_number, o.project_id, o.status::text,
 		       o.staff_user_id, o.staff_full_name, o.staff_email,
+		       COALESCE(o.operator_name, o.staff_full_name) AS operator_name,
 		       o.buyer_gender::text, o.buyer_age, o.buyer_student_alumni_year,
 		       o.subtotal::text, o.discount::text, o.net_total::text, o.created_at,
 		       pay.method::text, pay.slip_url, pay.received_amount::text,
@@ -494,6 +495,7 @@ func readPOSOrder(ctx context.Context, queryer promotionQueryer, orderID int64) 
 		WHERE o.order_id = $1`, orderID).Scan(
 		&order.OrderID, &order.OrderNumber, &order.ProjectID, &order.Status,
 		&order.Staff.StaffID, &order.Staff.FullName, &order.Staff.Email,
+		&order.OperatorName,
 		&gender, &order.Buyer.Age, &order.Buyer.StudentAlumniYear,
 		&subtotal, &discount, &netTotal, &order.CreatedAt,
 		&method, &order.Payment.SlipURL, &receivedAmount,

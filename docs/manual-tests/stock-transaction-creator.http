@@ -1,0 +1,60 @@
+@baseUrl = http://localhost:8080
+@adminToken = replace-with-admin-token
+# Run against a disposable local DB. Use a product and a variant of that product.
+@productId = replace-with-product-id
+@variantId = replace-with-variant-id
+
+### Adjust product stock — 201; created_by is the authenticated account name, not its ID
+POST {{baseUrl}}/products/{{productId}}/stock/adjust
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"quantity_change":1,"reason":"Creator name check"}
+
+### Adjust variant stock — 201; same creator name
+POST {{baseUrl}}/products/{{productId}}/stock/adjust
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"variant_id":{{variantId}},"quantity_change":1,"reason":"Creator name check"}
+
+### Manual reduction with a name — 201; created_by is "มายด์"; stored actor remains user ID
+POST {{baseUrl}}/products/{{productId}}/stock/adjust
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"quantity_change":-1,"reason":"Damaged","operator_name":"  มายด์  "}
+
+### Blank operator uses the account name — 201
+POST {{baseUrl}}/products/{{productId}}/stock/adjust
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"variant_id":{{variantId}},"quantity_change":-1,"reason":"Damaged","operator_name":"   "}
+
+### Invalid operator type — 400; no stock changes
+POST {{baseUrl}}/products/{{productId}}/stock/adjust
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"quantity_change":-1,"reason":"Damaged","operator_name":123}
+
+### Global history — 200; created_by resolves account IDs to names
+GET {{baseUrl}}/stock/transactions
+Authorization: Bearer {{adminToken}}
+
+### Product history — 200; same creator names
+GET {{baseUrl}}/products/{{productId}}/stock/transactions
+Authorization: Bearer {{adminToken}}
+
+### Variant history — 200; same creator names
+GET {{baseUrl}}/variants/{{variantId}}/stock/transactions
+Authorization: Bearer {{adminToken}}
+
+# created_by uses the explicit adjustment name first, otherwise the account name/email.
+# POS stock history uses the actual linked order's operator_name or staff name snapshot,
+# including existing orders. Create a named POS order using order-operator-name.http,
+# then check its stock entries in all three histories above; no second name input is needed.
+# Unknown IDs and legacy labels (such as local-seed) remain unchanged; NULL stays NULL.
+# The database still stores the authenticated user ID. Manual references to an order
+# do not make an adjustment a POS transaction or select that order's operator name.

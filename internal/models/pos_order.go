@@ -45,10 +45,10 @@ const POSOrderStatusCompleted = "COMPLETED"
 // POSBuyerAgeMax bounds the recorded buyer age so an obvious typo is rejected.
 const POSBuyerAgeMax int32 = 150
 
-// Request text caps. POSStudentAlumniYearMaxLength and POSPaymentNoteMaxLength
-// match the columns the checkout snapshot writes; the slip key and
-// Idempotency-Key columns are TEXT, so those two bound the API contract only.
+// Request text caps match the checkout snapshot columns, except for the slip
+// key and Idempotency-Key: those columns are TEXT and bounded by the API only.
 const (
+	POSOperatorNameMaxLength      = 100
 	POSStudentAlumniYearMaxLength = 50
 	POSPaymentNoteMaxLength       = 500
 	POSSlipObjectKeyMaxLength     = 1024
@@ -80,10 +80,12 @@ type POSPaymentRequest struct {
 // POSCheckoutRequest is the client-supplied paid checkout. Prices, discounts,
 // and totals are deliberately absent: the server resolves all money from the
 // current catalogue and Promotions inside the checkout transaction.
+// OperatorName is self-reported and does not change the authenticated staff.
 type POSCheckoutRequest struct {
-	Buyer   POSBuyer             `json:"buyer"`
-	Items   []POSCartItemRequest `json:"items"`
-	Payment POSPaymentRequest    `json:"payment"`
+	Buyer        POSBuyer             `json:"buyer"`
+	Items        []POSCartItemRequest `json:"items"`
+	Payment      POSPaymentRequest    `json:"payment"`
+	OperatorName *string              `json:"operator_name"`
 }
 
 // PaymentSlip is a stored, server-trusted QR payment slip object.
@@ -129,13 +131,15 @@ type POSOrderItemSnapshot struct {
 	InventoryTransactionID int64     `json:"inventory_transaction_id"`
 }
 
-// POSOrder is an immutable paid POS order.
+// POSOrder is an immutable paid POS order. OperatorName resolves to the
+// explicit name or this order's staff snapshot when no name was supplied.
 type POSOrder struct {
 	OrderID          int64                    `json:"order_id"`
 	OrderNumber      string                   `json:"order_number"`
 	ProjectID        int64                    `json:"project_id"`
 	Status           string                   `json:"status"`
 	Staff            POSStaffSnapshot         `json:"staff"`
+	OperatorName     string                   `json:"operator_name"`
 	Buyer            POSBuyer                 `json:"buyer"`
 	Items            []POSOrderItemSnapshot   `json:"items"`
 	AppliedPromotion *AppliedProjectPromotion `json:"applied_promotion"`
@@ -156,6 +160,7 @@ type POSCheckoutCommand struct {
 	Buyer              POSBuyer
 	Items              []POSCartItemRequest
 	Payment            POSPaymentRequest
+	OperatorName       *string
 }
 
 // POSCheckoutSnapshot is the project status, staff, request-ordered sellable

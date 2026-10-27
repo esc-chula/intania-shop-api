@@ -130,6 +130,72 @@ func TestProjectStatusOverrideRollbackPreservesManualChoices(t *testing.T) {
 	}
 }
 
+func TestOrderOperatorNameMigrationPreservesExistingSnapshots(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := Apply(ctx, dsn, logger); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	migrationFS, err := fs.Sub(files, "sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFS, goose.WithSlog(logger))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(ctx, 10); err != nil {
+		t.Fatal(err)
+	}
+	assertNames(t, database, `SELECT column_name FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'operator_name'`, nil)
+	// Insert a pre-migration row without using the new column.
+	var orderID int64
+	if err := database.QueryRowContext(ctx, `INSERT INTO orders
+		(order_number, staff_full_name, subtotal, discount, net_total)
+		VALUES ('operator-migration-test', 'Original account', 0, 0, 0) RETURNING order_id`).Scan(&orderID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := database.ExecContext(ctx, `DELETE FROM orders WHERE order_id = $1`, orderID); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var raw sql.NullString
+	var resolved string
+	if err := database.QueryRowContext(ctx, `SELECT operator_name, COALESCE(operator_name, staff_full_name)
+		FROM orders WHERE order_id = $1`, orderID).Scan(&raw, &resolved); err != nil || raw.Valid || resolved != "Original account" {
+		t.Fatalf("legacy operator = %+v, resolved = %q, error = %v", raw, resolved, err)
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE orders SET operator_name = 'มายด์' WHERE order_id = $1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(ctx, 10); err != nil {
+		t.Fatal(err)
+	}
+	assertNames(t, database, `SELECT column_name FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'operator_name'`, nil)
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT operator_name, staff_full_name
+		FROM orders WHERE order_id = $1`, orderID).Scan(&raw, &resolved); err != nil || raw.Valid || resolved != "Original account" {
+		t.Fatalf("snapshot after rollback/reapply = %+v, %q, error = %v", raw, resolved, err)
+	}
+}
+
 func assertNames(t *testing.T, database *sql.DB, query string, want []string) {
 	t.Helper()
 	rows, err := database.Query(query)

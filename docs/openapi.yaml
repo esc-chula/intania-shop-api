@@ -838,13 +838,14 @@ components:
           schema: { $ref: "#/components/schemas/POSCheckoutRequest" }
           examples:
             qr:
-              summary: QR payment
+              summary: QR payment with an explicit operator name
               value:
+                operator_name: มายด์
                 buyer: { gender: FEMALE, age: 21, student_alumni_year: Intania 105 }
                 items: [{ product_id: 10, variant_id: 22, quantity: 1 }]
                 payment: { method: QR_CODE, slip_object_key: payment-slips/2026/08/example.png, note: Paid at booth 1 }
             cashExact:
-              summary: Cash tendered exactly
+              summary: Cash tendered exactly; omitted operator name uses the staff snapshot
               value:
                 buyer: { gender: PREFER_NOT_TO_SAY, age: 0, student_alumni_year: null }
                 items: [{ product_id: 11, variant_id: null, quantity: 2 }]
@@ -858,6 +859,7 @@ components:
             cashWithChange:
               summary: Cash with change given back
               value:
+                operator_name: null
                 buyer: { gender: MALE, age: 22, student_alumni_year: null }
                 items: [{ product_id: 11, variant_id: null, quantity: 2 }]
                 payment: { method: REAL_MONEY, received_amount: "500.00", no_change: false, note: null }
@@ -1316,6 +1318,10 @@ components:
       additionalProperties: false
       required: [buyer, items, payment]
       properties:
+        operator_name:
+          type: [string, "null"]
+          maxLength: 100
+          description: Optional self-reported operator name, trimmed before storage and fingerprinting. Omitted, null, or blank values are stored as null; responses use the order's staff name snapshot instead. This does not change the authenticated staff or permissions.
         buyer: { $ref: "#/components/schemas/POSBuyer" }
         items:
           type: array
@@ -1366,13 +1372,18 @@ components:
     POSOrder:
       type: object
       additionalProperties: false
-      required: [order_id, order_number, project_id, status, staff, buyer, items, applied_promotion, subtotal, discount, net_total, payment, created_at]
+      required: [order_id, order_number, project_id, status, staff, operator_name, buyer, items, applied_promotion, subtotal, discount, net_total, payment, created_at]
       properties:
         order_id: { type: integer, format: int64, minimum: 1 }
         order_number: { type: string, minLength: 1, maxLength: 100, description: Opaque server-generated identifier; clients must not parse its format }
         project_id: { type: integer, format: int64, minimum: 1 }
         status: { type: string, const: COMPLETED }
         staff: { $ref: "#/components/schemas/POSStaffSnapshot" }
+        operator_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Explicit operator name or, when absent, the staff full_name snapshot from this order. Never resolved from the current user profile.
         buyer: { $ref: "#/components/schemas/POSBuyer" }
         items: { type: array, minItems: 1, items: { $ref: "#/components/schemas/POSOrderItemSnapshot" } }
         applied_promotion:
@@ -1472,6 +1483,11 @@ components:
       type: object
       required: [quantity_change, reason]
       properties:
+        operator_name:
+          type: [string, "null"]
+          maxLength: 100
+          description: Optional self-reported operator name for this adjustment. Trimmed before storage; omitted, null, or blank values use the authenticated account name/email in responses. Does not change the stored authenticated user ID or permissions.
+          example: มายด์
         variant_id: { type: [integer, "null"], format: int64 }
         quantity_change: { type: integer, format: int32, not: { const: 0 } }
         reason: { type: string }
@@ -1493,7 +1509,10 @@ components:
         notes: { type: [string, "null"] }
         reference_type: { type: [string, "null"] }
         reference_id: { type: [integer, "null"], format: int64 }
-        created_by: { type: [string, "null"] }
+        created_by:
+          type: [string, "null"]
+          description: Display name of the operator. Uses the explicit stock adjustment operator_name first; POS transactions use the linked order's operator_name or staff name snapshot. Other transactions use the account's current name, then email, then the stored actor value (including legacy labels or IDs). Null for unattributed transactions. The database retains the authenticated user ID independently.
+          example: มายด์
         confirmation_image: { type: [string, "null"], format: uri }
         product_name: { type: string }
         created_at: { type: string, format: date-time }
@@ -1677,6 +1696,7 @@ components:
           project_id: 7
           status: COMPLETED
           staff: { staff_id: 2, full_name: Booth Admin, email: admin@example.com }
+          operator_name: มายด์
           buyer: { gender: FEMALE, age: 21, student_alumni_year: Intania 105 }
           items:
             - { order_item_id: 1, product_id: 10, variant_id: 22, product_name: Intania Shirt, size: M, color: Navy, image_url: "https://example.com/shirt.png", quantity: 1, unit_price: "299.00", line_total: "299.00", inventory_transaction_id: 701 }

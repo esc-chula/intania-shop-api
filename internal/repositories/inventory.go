@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/esc-chula/intania-shop-api/internal/models"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -71,7 +72,18 @@ func (r *InventoryRepository) Adjust(ctx context.Context, productID int64, reque
 		typ = "DECREMENT"
 	}
 	var out models.StockTransaction
-	e = tx.QueryRow(ctx, `INSERT INTO stock_transactions(product_id,variant_id,transaction_type,quantity_change,quantity_before,quantity_after,reason,notes,reference_type,reference_id,created_by,confirmation_image) VALUES($1,$2,$3::stock_transaction_type,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING transaction_id,product_id,variant_id,transaction_type::text,quantity_change,quantity_before,quantity_after,reason,notes,reference_type,reference_id,created_by,confirmation_image,created_at`, pid, vid, typ, request.QuantityChange, before, after, request.Reason, request.Notes, request.ReferenceType, request.ReferenceID, actor, request.ConfirmationImage).Scan(&out.TransactionID, &out.ProductID, &out.VariantID, &out.TransactionType, &out.QuantityChange, &out.QuantityBefore, &out.QuantityAfter, &out.Reason, &out.Notes, &out.ReferenceType, &out.ReferenceID, &out.CreatedBy, &out.ConfirmationImage, &out.CreatedAt)
+	e = tx.QueryRow(ctx, `
+		WITH inserted AS (
+			INSERT INTO stock_transactions(product_id,variant_id,transaction_type,quantity_change,quantity_before,quantity_after,reason,notes,reference_type,reference_id,created_by,confirmation_image,operator_name)
+			VALUES($1,$2,$3::stock_transaction_type,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+			RETURNING *
+		)
+		SELECT st.transaction_id,st.product_id,st.variant_id,st.transaction_type::text,
+			st.quantity_change,st.quantity_before,st.quantity_after,st.reason,st.notes,
+			st.reference_type,st.reference_id,
+			COALESCE(st.operator_name, NULLIF(btrim(u.full_name), ''), u.email, st.created_by),
+			st.confirmation_image,st.created_at
+		FROM inserted st LEFT JOIN users u ON u.user_id::text=st.created_by`, pid, vid, typ, request.QuantityChange, before, after, request.Reason, request.Notes, request.ReferenceType, request.ReferenceID, actor, request.ConfirmationImage, request.OperatorName).Scan(&out.TransactionID, &out.ProductID, &out.VariantID, &out.TransactionType, &out.QuantityChange, &out.QuantityBefore, &out.QuantityAfter, &out.Reason, &out.Notes, &out.ReferenceType, &out.ReferenceID, &out.CreatedBy, &out.ConfirmationImage, &out.CreatedAt)
 	if e != nil {
 		return models.StockTransaction{}, fmt.Errorf("record stock transaction: %w", e)
 	}
@@ -114,7 +126,12 @@ func (r *InventoryRepository) list(ctx context.Context, where string, args []any
 	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*)`+base+where, args...).Scan(&total); err != nil {
 		return models.StockTransactionListResponse{}, fmt.Errorf("count stock transactions: %w", err)
 	}
-	query := `SELECT st.transaction_id,st.product_id,st.variant_id,st.transaction_type::text,st.quantity_change,st.quantity_before,st.quantity_after,st.reason,st.notes,st.reference_type,st.reference_id,st.created_by,st.confirmation_image,st.created_at,COALESCE(p.name,vp.name)` + base + where + ` ORDER BY st.transaction_id DESC OFFSET $` + fmt.Sprint(len(args)+1) + ` LIMIT $` + fmt.Sprint(len(args)+2)
+	// ponytail: compare as text so legacy actor labels never need a numeric cast.
+	base += ` LEFT JOIN users u ON u.user_id::text=st.created_by `
+	// ponytail: reuse the unique order-item link for old and new POS transactions;
+	// client-supplied reference IDs must not select another order's operator.
+	base += ` LEFT JOIN order_items oi ON oi.inventory_transaction_id=st.transaction_id LEFT JOIN orders o ON o.order_id=oi.order_id `
+	query := `SELECT st.transaction_id,st.product_id,st.variant_id,st.transaction_type::text,st.quantity_change,st.quantity_before,st.quantity_after,st.reason,st.notes,st.reference_type,st.reference_id,COALESCE(st.operator_name, o.operator_name, o.staff_full_name, NULLIF(btrim(u.full_name), ''), u.email, st.created_by),st.confirmation_image,st.created_at,COALESCE(p.name,vp.name)` + base + where + ` ORDER BY st.transaction_id DESC OFFSET $` + fmt.Sprint(len(args)+1) + ` LIMIT $` + fmt.Sprint(len(args)+2)
 	queryArgs := append(append([]any{}, args...), offset, limit)
 	rows, err := r.pool.Query(ctx, query, queryArgs...)
 	if err != nil {

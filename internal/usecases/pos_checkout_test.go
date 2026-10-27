@@ -2,13 +2,70 @@ package usecases
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
 )
+
+func TestPOSCheckoutOperatorNameValidationAndFingerprint(t *testing.T) {
+	// Fixed pre-operator payload: new fields must not change existing retries.
+	legacyPayload := `{"project_id":7,"staff_user_id":42,"buyer":{"gender":"FEMALE","age":21,"student_alumni_year":"Intania 105"},"items":[{"product_id":10,"variant_id":22,"quantity":2},{"product_id":11,"variant_id":null,"quantity":1}],"payment":{"method":"REAL_MONEY","slip_object_key":null,"received_amount":"130.00","no_change":true,"note":null}}`
+	legacyFingerprint := fmt.Sprintf("%x", sha256.Sum256([]byte(legacyPayload)))
+	tests := []struct {
+		name    string
+		input   *string
+		want    string
+		invalid bool
+	}{
+		{name: "omitted or null"},
+		{name: "empty", input: posStringPointer("")},
+		{name: "whitespace", input: posStringPointer(" \t\n\u2003 ")},
+		{name: "Thai name", input: posStringPointer("  มายด์  "), want: "มายด์"},
+		{name: "100 Unicode characters", input: posStringPointer(" " + strings.Repeat("ก", 100) + " "), want: strings.Repeat("ก", 100)},
+		{name: "101 Unicode characters", input: posStringPointer(strings.Repeat("ก", 101)), invalid: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := posCashCheckoutRequest(t, "130.00", true)
+			request.OperatorName = test.input
+			command, err := newPOSCheckoutCommand(7, 42, "operator-key", request)
+			if test.invalid {
+				var validation POSValidationError
+				if !errors.As(err, &validation) || !strings.Contains(validation.Message, "Operator name cannot be longer than 100 characters") {
+					t.Fatalf("error = %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.want == "" {
+				if command.OperatorName != nil || command.RequestFingerprint != legacyFingerprint {
+					t.Fatalf("absent operator changed legacy command: %+v; want hash %s", command, legacyFingerprint)
+				}
+				return
+			}
+			if command.OperatorName == nil || *command.OperatorName != test.want {
+				t.Fatalf("operator name = %v, want %q", command.OperatorName, test.want)
+			}
+			request.OperatorName = &test.want
+			trimmed, err := newPOSCheckoutCommand(7, 42, "operator-key", request)
+			if err != nil || command.RequestFingerprint != trimmed.RequestFingerprint || command.RequestFingerprint == legacyFingerprint {
+				t.Fatalf("normalized fingerprint = %s vs %s, error = %v", command.RequestFingerprint, trimmed.RequestFingerprint, err)
+			}
+			request.OperatorName = posStringPointer("คนอื่น")
+			other, err := newPOSCheckoutCommand(7, 42, "operator-key", request)
+			if err != nil || other.RequestFingerprint == command.RequestFingerprint {
+				t.Fatalf("changed name did not change fingerprint, error = %v", err)
+			}
+		})
+	}
+}
 
 func TestPOSServiceCheckoutPricesCashOrderFromTheLockedSnapshot(t *testing.T) {
 	store := newPOSCheckoutStore(t)

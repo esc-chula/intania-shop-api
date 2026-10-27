@@ -58,6 +58,30 @@ func TestPOSHandlerCreateOrderReturnsTheCreatedOrder(t *testing.T) {
 	if len(envelope.Data.Items) != 1 || envelope.Data.Items[0].InventoryTransactionID != 500 {
 		t.Fatalf("order items = %+v", envelope.Data.Items)
 	}
+	if envelope.Data.OperatorName != "Ada" {
+		t.Fatalf("operator name = %q, want Ada", envelope.Data.OperatorName)
+	}
+}
+
+func TestPOSHandlerCreateOrderAcceptsOptionalOperatorName(t *testing.T) {
+	for _, value := range []string{`null`, `""`, `"  มายด์  "`} {
+		t.Run(value, func(t *testing.T) {
+			service := &posCheckoutHTTPServiceStub{order: posTestOrder(t)}
+			body := `{"operator_name":` + value + `,` + posCheckoutBody[1:]
+			response := servePOSCheckout(posCheckoutRouter(service), "/projects/7/orders", body, "operator-key")
+			if response.Code != http.StatusCreated || service.calls != 1 {
+				t.Fatalf("status = %d; body = %s", response.Code, response.Body.String())
+			}
+			var expected *string
+			if err := json.Unmarshal([]byte(value), &expected); err != nil {
+				t.Fatal(err)
+			}
+			got := service.request.OperatorName
+			if (got == nil) != (expected == nil) || (got != nil && *got != *expected) {
+				t.Fatalf("operator name = %v, want %v", got, expected)
+			}
+		})
+	}
 }
 
 func TestPOSHandlerCreateOrderMarksAnIdempotentReplay(t *testing.T) {
@@ -101,6 +125,9 @@ func TestPOSHandlerCreateOrderRejectsClientSuppliedMoney(t *testing.T) {
 		{name: "numeric amount", body: `{"buyer":{"gender":"MALE"},"items":[{"product_id":10,"quantity":1}],` +
 			`"payment":{"method":"REAL_MONEY","received_amount":1,"no_change":true}}`},
 		{name: "trailing JSON", body: posCheckoutBody + ` {}`},
+		{name: "numeric operator name", body: `{"operator_name":123,` + posCheckoutBody[1:]},
+		{name: "object operator name", body: `{"operator_name":{},` + posCheckoutBody[1:]},
+		{name: "boolean operator name", body: `{"operator_name":true,` + posCheckoutBody[1:]},
 	}
 
 	for _, test := range tests {
@@ -253,12 +280,13 @@ func posTestOrder(t *testing.T) models.POSOrder {
 	retained := handlerTestAmount(t, "0.00")
 
 	return models.POSOrder{
-		OrderID:     99,
-		OrderNumber: "ORD-00000099",
-		ProjectID:   7,
-		Status:      models.POSOrderStatusCompleted,
-		Staff:       models.POSStaffSnapshot{StaffID: 42, FullName: "Ada", Email: "ada@example.com"},
-		Buyer:       models.POSBuyer{Gender: models.POSGenderFemale},
+		OrderID:      99,
+		OrderNumber:  "ORD-00000099",
+		ProjectID:    7,
+		Status:       models.POSOrderStatusCompleted,
+		Staff:        models.POSStaffSnapshot{StaffID: 42, FullName: "Ada", Email: "ada@example.com"},
+		OperatorName: "Ada",
+		Buyer:        models.POSBuyer{Gender: models.POSGenderFemale},
 		Items: []models.POSOrderItemSnapshot{{
 			OrderItemID:            1,
 			ProductID:              10,
