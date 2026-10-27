@@ -139,6 +139,45 @@ func TestPOSServiceCheckoutAppliesTheBestPromotion(t *testing.T) {
 	assertAmount(t, store.plan.AppliedPromotion.OriginalBundlePrice, "130.00")
 }
 
+func TestPOSServiceQuoteAndCheckoutRepeatTheSamePromotion(t *testing.T) {
+	store := newPOSCheckoutStore(t)
+	store.snapshot.Items[1].Quantity = 2
+	store.snapshot.Promotions = []models.PricingPromotion{{
+		PromotionID: 3, Name: "Shirt and cap", PromotionPrice: posTestAmount(t, "70.00"),
+		ItemGroups: []models.PricingPromotionItemGroup{
+			{Options: []models.PricingPromotionItem{{ProductID: 10, VariantID: posInt64Pointer(22), Quantity: 1}}},
+			{Options: []models.PricingPromotionItem{{ProductID: 11, Quantity: 1}}},
+		},
+	}}
+	store.quote = models.POSQuoteSnapshot{
+		Project: models.Project{ProjectID: 7, Status: models.ProjectStatusActive},
+		Items:   store.snapshot.Items, Promotions: store.snapshot.Promotions,
+	}
+	request := posCashCheckoutRequest(t, "200.00", false)
+	request.Items[1].Quantity = 2
+	service := NewPOSService(store)
+	quote, err := service.Quote(context.Background(), 7, models.POSCartRequest{Items: request.Items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, replayed, err := service.Checkout(context.Background(), 7, 42, "repeated-promotion", request); err != nil || replayed {
+		t.Fatalf("checkout replayed=%t, error=%v", replayed, err)
+	}
+	assertAmount(t, quote.Subtotal, "180.00")
+	assertAmount(t, quote.Discount, "40.00")
+	assertAmount(t, quote.NetTotal, "140.00")
+	if quote.AppliedPromotion == nil || store.plan.AppliedPromotion == nil || *quote.AppliedPromotion != *store.plan.AppliedPromotion {
+		t.Fatalf("quote promotion=%+v, checkout promotion=%+v", quote.AppliedPromotion, store.plan.AppliedPromotion)
+	}
+	assertAmount(t, quote.AppliedPromotion.OriginalBundlePrice, "180.00")
+	assertAmount(t, quote.AppliedPromotion.PromotionPrice, "140.00")
+	if quote.Subtotal != store.plan.Subtotal || quote.Discount != store.plan.Discount || quote.NetTotal != store.plan.NetTotal {
+		t.Fatalf("quote=%+v, checkout plan=%+v", quote, store.plan)
+	}
+	assertAmount(t, *store.plan.Payment.ChangeAmount, "60.00")
+	assertAmount(t, *store.plan.Payment.RetainedAmount, "0.00")
+}
+
 func TestPOSServiceCheckoutRecordsTheTrustedSlipForQRPayments(t *testing.T) {
 	store := newPOSCheckoutStore(t)
 	store.snapshot.Slip = &models.PaymentSlip{

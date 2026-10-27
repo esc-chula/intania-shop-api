@@ -60,8 +60,9 @@ type POSQuoteLineItem struct {
 }
 
 // AppliedProjectPromotion is the one Promotion selected for a quotation.
-// OriginalBundlePrice is calculated from the current Cart line prices and the
-// Promotion's required quantities.
+// Monetary fields are totals across every application: OriginalBundlePrice
+// covers the matched Cart quantities, PromotionPrice is the per-set price
+// multiplied by the number of applications, and Discount is their difference.
 type AppliedProjectPromotion struct {
 	PromotionID         int64     `json:"promotion_id"`
 	Name                string    `json:"name"`
