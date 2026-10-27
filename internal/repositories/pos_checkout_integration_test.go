@@ -365,13 +365,27 @@ func TestPOSRepositoryCheckoutSnapshotsTheAppliedPromotion(t *testing.T) {
 }
 
 func TestPOSRepeatedPromotionSnapshotAndReplay(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		pooledQuantity int32
+	}{
+		{"repeated OR bundle", 0},
+		{"one mixed variant set", 1},
+		{"repeated mixed variant sets", 3},
+	} {
+		t.Run(test.name, func(t *testing.T) { testPOSPromotionSnapshotAndReplay(t, test.pooledQuantity) })
+	}
+}
+
+func testPOSPromotionSnapshotAndReplay(t *testing.T, pooledQuantity int32) {
+	t.Helper()
 	database := openPromotionIntegrationDatabase(t)
 	fixture := newPromotionIntegrationFixture(t, database)
 	staffID := insertCheckoutStaff(t, database)
 	setCheckoutStock(t, database, fixture, 7, 3, 5)
 	ctx := context.Background()
 	promotions := NewPromotionRepository(database)
-	promotion, err := promotions.Create(ctx, fixture.Today, fixture.ProjectID, models.ProjectPromotionMutation{
+	mutation := models.ProjectPromotionMutation{
 		Name: "Repeated OR bundle", PromotionPrice: mustPromotionAmount(t, "120.00"),
 		ItemGroups: []models.ProjectPromotionItemGroupInput{
 			{Options: []models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID, Quantity: 1}}},
@@ -380,7 +394,15 @@ func TestPOSRepeatedPromotionSnapshotAndReplay(t *testing.T) {
 				{ProductID: fixture.ProductBID, VariantID: &fixture.VariantTwoID, Quantity: 1},
 			}},
 		},
-	})
+	}
+	if pooledQuantity > 0 {
+		mutation.PromotionPrice = mustPromotionAmount(t, "40.00")
+		mutation.ItemGroups = []models.ProjectPromotionItemGroupInput{{Options: []models.ProjectPromotionItemInput{
+			{ProductID: fixture.ProductBID, VariantID: &fixture.VariantOneID, Quantity: 2},
+			{ProductID: fixture.ProductBID, VariantID: &fixture.VariantTwoID, Quantity: 2},
+		}}}
+	}
+	promotion, err := promotions.Create(ctx, fixture.Today, fixture.ProjectID, mutation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,6 +415,20 @@ func TestPOSRepeatedPromotionSnapshotAndReplay(t *testing.T) {
 			{ProductID: fixture.ProductBID, VariantID: &fixture.VariantTwoID, Quantity: 1},
 		},
 	}
+	wantSubtotal, wantDiscount, wantNet, wantChange := "280.00", "40.00", "240.00", "60.00"
+	wantProductStock, wantVariantStock, wantTransactions := int32(5), int32(2), 3
+	if pooledQuantity > 0 {
+		request.Items = []models.POSCartItemRequest{
+			{ProductID: fixture.ProductBID, VariantID: &fixture.VariantOneID, Quantity: pooledQuantity},
+			{ProductID: fixture.ProductBID, VariantID: &fixture.VariantTwoID, Quantity: 1},
+		}
+		wantSubtotal, wantDiscount, wantNet, wantChange = "80.00", "40.00", "40.00", "260.00"
+		wantProductStock, wantTransactions = 7, 2
+		if pooledQuantity == 3 {
+			wantSubtotal, wantDiscount, wantNet, wantChange = "160.00", "80.00", "80.00", "220.00"
+			wantVariantStock = 0
+		}
+	}
 	service := usecases.NewPOSService(NewPOSRepository(database))
 	quote, err := service.Quote(ctx, fixture.ProjectID, models.POSCartRequest{Items: request.Items})
 	if err != nil {
@@ -403,15 +439,15 @@ func TestPOSRepeatedPromotionSnapshotAndReplay(t *testing.T) {
 	if err != nil || replayed {
 		t.Fatalf("checkout replayed=%t, error=%v", replayed, err)
 	}
-	assertOrderAmount(t, order.Subtotal, "280.00")
-	assertOrderAmount(t, order.Discount, "40.00")
-	assertOrderAmount(t, order.NetTotal, "240.00")
-	assertOrderAmount(t, *order.Payment.ChangeAmount, "60.00")
+	assertOrderAmount(t, order.Subtotal, wantSubtotal)
+	assertOrderAmount(t, order.Discount, wantDiscount)
+	assertOrderAmount(t, order.NetTotal, wantNet)
+	assertOrderAmount(t, *order.Payment.ChangeAmount, wantChange)
 	if order.AppliedPromotion == nil || quote.AppliedPromotion == nil || *order.AppliedPromotion != *quote.AppliedPromotion {
 		t.Fatalf("order promotion=%+v, quote promotion=%+v", order.AppliedPromotion, quote.AppliedPromotion)
 	}
-	assertOrderAmount(t, order.AppliedPromotion.OriginalBundlePrice, "280.00")
-	assertOrderAmount(t, order.AppliedPromotion.PromotionPrice, "240.00")
+	assertOrderAmount(t, order.AppliedPromotion.OriginalBundlePrice, wantSubtotal)
+	assertOrderAmount(t, order.AppliedPromotion.PromotionPrice, wantNet)
 	if quote.Subtotal != order.Subtotal || quote.Discount != order.Discount || quote.NetTotal != order.NetTotal {
 		t.Fatalf("quote totals differ from order: quote=%+v, order=%+v", quote, order)
 	}
@@ -433,11 +469,11 @@ func TestPOSRepeatedPromotionSnapshotAndReplay(t *testing.T) {
 			t.Fatalf("stored promotion/totals changed: %+v", read)
 		}
 	}
-	if got := readProductStock(t, database, fixture.ProductAID); got != 5 {
-		t.Fatalf("product stock=%d, want 5", got)
+	if got := readProductStock(t, database, fixture.ProductAID); got != wantProductStock {
+		t.Fatalf("product stock=%d, want %d", got, wantProductStock)
 	}
-	if got := readVariantStock(t, database, fixture.VariantOneID); got != 2 {
-		t.Fatalf("first variant stock=%d, want 2", got)
+	if got := readVariantStock(t, database, fixture.VariantOneID); got != wantVariantStock {
+		t.Fatalf("first variant stock=%d, want %d", got, wantVariantStock)
 	}
 	if got := readVariantStock(t, database, fixture.VariantTwoID); got != 4 {
 		t.Fatalf("second variant stock=%d, want 4", got)
@@ -449,8 +485,8 @@ func TestPOSRepeatedPromotionSnapshotAndReplay(t *testing.T) {
 	if err := database.QueryRow(ctx, `SELECT count(*) FROM stock_transactions WHERE reference_type = 'ORDER' AND reference_id = $1`, order.OrderID).Scan(&transactions); err != nil {
 		t.Fatal(err)
 	}
-	if snapshots != 1 || transactions != 3 {
-		t.Fatalf("promotion snapshots=%d, stock transactions=%d; want 1 and 3", snapshots, transactions)
+	if snapshots != 1 || transactions != wantTransactions {
+		t.Fatalf("promotion snapshots=%d, stock transactions=%d; want 1 and %d", snapshots, transactions, wantTransactions)
 	}
 }
 
