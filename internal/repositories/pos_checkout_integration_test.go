@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
+	"github.com/esc-chula/intania-shop-api/internal/usecases"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -360,6 +361,96 @@ func TestPOSRepositoryCheckoutSnapshotsTheAppliedPromotion(t *testing.T) {
 	}
 	if stored.AppliedPromotion == nil || stored.AppliedPromotion.Name != promotion.Name {
 		t.Fatalf("promotion snapshot after deletion = %+v", stored.AppliedPromotion)
+	}
+}
+
+func TestPOSRepeatedPromotionSnapshotAndReplay(t *testing.T) {
+	database := openPromotionIntegrationDatabase(t)
+	fixture := newPromotionIntegrationFixture(t, database)
+	staffID := insertCheckoutStaff(t, database)
+	setCheckoutStock(t, database, fixture, 7, 3, 5)
+	ctx := context.Background()
+	promotions := NewPromotionRepository(database)
+	promotion, err := promotions.Create(ctx, fixture.Today, fixture.ProjectID, models.ProjectPromotionMutation{
+		Name: "Repeated OR bundle", PromotionPrice: mustPromotionAmount(t, "120.00"),
+		ItemGroups: []models.ProjectPromotionItemGroupInput{
+			{Options: []models.ProjectPromotionItemInput{{ProductID: fixture.ProductAID, Quantity: 1}}},
+			{Options: []models.ProjectPromotionItemInput{
+				{ProductID: fixture.ProductBID, VariantID: &fixture.VariantOneID, Quantity: 1},
+				{ProductID: fixture.ProductBID, VariantID: &fixture.VariantTwoID, Quantity: 1},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := cashCheckoutCommand(t, fixture, staffID, "repeated-promotion", "300.00", false)
+	request := models.POSCheckoutRequest{
+		Buyer: command.Buyer, Payment: command.Payment,
+		Items: []models.POSCartItemRequest{
+			{ProductID: fixture.ProductAID, Quantity: 2},
+			{ProductID: fixture.ProductBID, VariantID: &fixture.VariantOneID, Quantity: 1},
+			{ProductID: fixture.ProductBID, VariantID: &fixture.VariantTwoID, Quantity: 1},
+		},
+	}
+	service := usecases.NewPOSService(NewPOSRepository(database))
+	quote, err := service.Quote(ctx, fixture.ProjectID, models.POSCartRequest{Items: request.Items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := fmt.Sprintf("repeated-promotion-%d", staffID)
+	order, replayed, err := service.Checkout(ctx, fixture.ProjectID, staffID, key, request)
+	if err != nil || replayed {
+		t.Fatalf("checkout replayed=%t, error=%v", replayed, err)
+	}
+	assertOrderAmount(t, order.Subtotal, "280.00")
+	assertOrderAmount(t, order.Discount, "40.00")
+	assertOrderAmount(t, order.NetTotal, "240.00")
+	assertOrderAmount(t, *order.Payment.ChangeAmount, "60.00")
+	if order.AppliedPromotion == nil || quote.AppliedPromotion == nil || *order.AppliedPromotion != *quote.AppliedPromotion {
+		t.Fatalf("order promotion=%+v, quote promotion=%+v", order.AppliedPromotion, quote.AppliedPromotion)
+	}
+	assertOrderAmount(t, order.AppliedPromotion.OriginalBundlePrice, "280.00")
+	assertOrderAmount(t, order.AppliedPromotion.PromotionPrice, "240.00")
+	if quote.Subtotal != order.Subtotal || quote.Discount != order.Discount || quote.NetTotal != order.NetTotal {
+		t.Fatalf("quote totals differ from order: quote=%+v, order=%+v", quote, order)
+	}
+
+	// Replays must return the original aggregate snapshot even after deletion.
+	if err := promotions.Delete(ctx, fixture.Today, fixture.ProjectID, promotion.PromotionID); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := NewOrderRepository(database).Detail(ctx, fixture.ProjectID, order.OrderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, replayed, err := service.Checkout(ctx, fixture.ProjectID, staffID, key, request)
+	if err != nil || !replayed || retry.OrderID != order.OrderID {
+		t.Fatalf("retry order=%+v, replayed=%t, error=%v", retry, replayed, err)
+	}
+	for _, read := range []models.POSOrder{stored, retry} {
+		if read.AppliedPromotion == nil || *read.AppliedPromotion != *order.AppliedPromotion || read.NetTotal != order.NetTotal || read.Discount != order.Discount {
+			t.Fatalf("stored promotion/totals changed: %+v", read)
+		}
+	}
+	if got := readProductStock(t, database, fixture.ProductAID); got != 5 {
+		t.Fatalf("product stock=%d, want 5", got)
+	}
+	if got := readVariantStock(t, database, fixture.VariantOneID); got != 2 {
+		t.Fatalf("first variant stock=%d, want 2", got)
+	}
+	if got := readVariantStock(t, database, fixture.VariantTwoID); got != 4 {
+		t.Fatalf("second variant stock=%d, want 4", got)
+	}
+	var snapshots, transactions int
+	if err := database.QueryRow(ctx, `SELECT count(*) FROM order_promotions WHERE order_id = $1`, order.OrderID).Scan(&snapshots); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(ctx, `SELECT count(*) FROM stock_transactions WHERE reference_type = 'ORDER' AND reference_id = $1`, order.OrderID).Scan(&transactions); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots != 1 || transactions != 3 {
+		t.Fatalf("promotion snapshots=%d, stock transactions=%d; want 1 and 3", snapshots, transactions)
 	}
 }
 

@@ -1,8 +1,10 @@
 package usecases
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/esc-chula/intania-shop-api/internal/models"
 )
@@ -30,8 +32,8 @@ var (
 	ErrPricingDuplicatePromotionItem = errors.New("duplicate pricing Promotion item")
 )
 
-// Calculate returns the Cart subtotal, the best eligible one-time Promotion,
-// its discount, and the resulting net total. All arithmetic uses checked
+// Calculate returns the Cart subtotal, the best eligible repeated Promotion,
+// its total discount, and the resulting net total. All arithmetic uses checked
 // fixed-point THBAmount operations.
 func (service *PricingService) Calculate(cart []models.PricingCartLine, promotions []models.PricingPromotion) (models.PricingResult, error) {
 	cartByIdentity, err := validatePricingCart(cart)
@@ -203,9 +205,15 @@ type pricingCandidate struct {
 }
 
 func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCartLine, promotion models.PricingPromotion) (pricingCandidate, bool, error) {
-	var bundlePrice models.THBAmount
-	for groupIndex, group := range pricingPromotionGroups(promotion) {
-		var bestOption *models.THBAmount
+	type availableOption struct {
+		price models.THBAmount
+		count int64
+	}
+	groups := pricingPromotionGroups(promotion)
+	available := make([][]availableOption, len(groups))
+	var applications int64
+	for groupIndex, group := range groups {
+		var capacity int64
 		for optionIndex, option := range group.Options {
 			line, exists := cartByIdentity[newPricingItemKey(option.ProductID, option.VariantID)]
 			if !exists || line.Quantity < option.Quantity {
@@ -215,22 +223,45 @@ func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCa
 			if err != nil {
 				return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d group %d option %d bundle total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, groupIndex+1, optionIndex+1, err)
 			}
-			if bestOption == nil || lineTotal.GreaterThan(*bestOption) {
-				choice := lineTotal
-				bestOption = &choice
-			}
+			count := int64(line.Quantity) / int64(option.Quantity)
+			capacity += count
+			available[groupIndex] = append(available[groupIndex], availableOption{price: lineTotal, count: count})
 		}
-		if bestOption == nil {
+		if capacity == 0 {
 			return pricingCandidate{}, false, nil
 		}
-		var err error
-		bundlePrice, err = bundlePrice.Add(*bestOption)
-		if err != nil {
-			return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d bundle total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, err)
+		if groupIndex == 0 || capacity < applications {
+			applications = capacity
 		}
 	}
 
-	discount, err := bundlePrice.Sub(promotion.PromotionPrice)
+	var bundlePrice models.THBAmount
+	for groupIndex, options := range available {
+		// ponytail: identities cannot overlap across groups, so choosing the
+		// highest-value options independently maximizes the total discount.
+		slices.SortStableFunc(options, func(a, b availableOption) int { return cmp.Compare(b.price.Satang(), a.price.Satang()) })
+		remaining := applications
+		for _, option := range options {
+			count := min(remaining, option.count)
+			total, err := option.price.Mul(count)
+			if err != nil {
+				return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d group %d repeated total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, groupIndex+1, err)
+			}
+			bundlePrice, err = bundlePrice.Add(total)
+			if err != nil {
+				return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d bundle total: %w", ErrPricingInvalidPromotion, promotion.PromotionID, err)
+			}
+			remaining -= count
+			if remaining == 0 {
+				break
+			}
+		}
+	}
+	promotionPrice, err := promotion.PromotionPrice.Mul(applications)
+	if err != nil {
+		return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d repeated price: %w", ErrPricingInvalidPromotion, promotion.PromotionID, err)
+	}
+	discount, err := bundlePrice.Sub(promotionPrice)
 	if err != nil {
 		return pricingCandidate{}, false, fmt.Errorf("%w: Promotion %d price exceeds its Cart bundle: %w", ErrPricingInvalidPromotion, promotion.PromotionID, err)
 	}
@@ -238,7 +269,7 @@ func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCa
 	return pricingCandidate{
 		promotionID:    promotion.PromotionID,
 		name:           promotion.Name,
-		promotionPrice: promotion.PromotionPrice,
+		promotionPrice: promotionPrice,
 		bundlePrice:    bundlePrice,
 		discount:       discount,
 	}, true, nil

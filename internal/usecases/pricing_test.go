@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"testing"
@@ -38,32 +39,77 @@ func TestPricingServiceCalculatesSubtotalWithoutMatchingPromotion(t *testing.T) 
 	}
 }
 
-func TestPricingServiceAppliesEligiblePromotionOnce(t *testing.T) {
-	service := NewPricingService()
-	result, err := service.Calculate(
-		[]models.PricingCartLine{{ProductID: 1, Quantity: 3, UnitPrice: pricingTestAmount(t, "100.00")}},
-		[]models.PricingPromotion{{
-			PromotionID:    12,
-			Name:           "Single bundle",
-			PromotionPrice: pricingTestAmount(t, "70.00"),
-			Items:          []models.PricingPromotionItem{{ProductID: 1, Quantity: 1}},
-		}},
-	)
-	if err != nil {
-		t.Fatal(err)
+func TestPricingServiceRepeatsEligiblePromotion(t *testing.T) {
+	tests := []struct {
+		name                                string
+		quantity, required                  int32
+		price                               string
+		subtotal, original, total, discount string
+		net                                 string
+	}{
+		{"one set", 1, 1, "70.00", "100.00", "100.00", "70.00", "30.00", "70.00"},
+		{"three sets", 3, 1, "70.00", "300.00", "300.00", "210.00", "90.00", "210.00"},
+		{"incomplete remainder", 5, 2, "170.00", "500.00", "400.00", "340.00", "60.00", "440.00"},
+		{"free sets", 3, 1, "0.00", "300.00", "300.00", "0.00", "300.00", "0.00"},
+		{"zero discount", 3, 1, "100.00", "300.00", "300.00", "300.00", "0.00", "300.00"},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := NewPricingService().Calculate(
+				[]models.PricingCartLine{{ProductID: 1, Quantity: test.quantity, UnitPrice: pricingTestAmount(t, "100.00")}},
+				[]models.PricingPromotion{{
+					PromotionID: 12, Name: "Repeated bundle", PromotionPrice: pricingTestAmount(t, test.price),
+					Items: []models.PricingPromotionItem{{ProductID: 1, Quantity: test.required}},
+				}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertPricingAmount(t, result.Subtotal, test.subtotal)
+			assertPricingAmount(t, result.Discount, test.discount)
+			assertPricingAmount(t, result.NetTotal, test.net)
+			if result.AppliedPromotion == nil || result.AppliedPromotion.PromotionID != 12 {
+				t.Fatalf("AppliedPromotion = %+v, want Promotion 12", result.AppliedPromotion)
+			}
+			assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, test.original)
+			assertPricingAmount(t, result.AppliedPromotion.PromotionPrice, test.total)
+			assertPricingAmount(t, result.AppliedPromotion.Discount, test.discount)
+		})
+	}
+}
 
-	assertPricingAmount(t, result.Subtotal, "300.00")
-	assertPricingAmount(t, result.Discount, "30.00")
-	assertPricingAmount(t, result.NetTotal, "270.00")
-	if result.AppliedPromotion == nil {
-		t.Fatal("AppliedPromotion is nil")
+func TestPricingServiceLimitsRepeatedPromotionByEveryGroup(t *testing.T) {
+	for _, quantity := range []int32{2, 5} {
+		t.Run(fmt.Sprintf("first group quantity %d", quantity), func(t *testing.T) {
+			result, err := NewPricingService().Calculate(
+				[]models.PricingCartLine{
+					{ProductID: 1, Quantity: quantity, UnitPrice: pricingTestAmount(t, "100.00")},
+					{ProductID: 2, Quantity: 2, UnitPrice: pricingTestAmount(t, "50.00")},
+				},
+				[]models.PricingPromotion{{
+					PromotionID: 1, PromotionPrice: pricingTestAmount(t, "120.00"),
+					ItemGroups: []models.PricingPromotionItemGroup{
+						{Options: []models.PricingPromotionItem{{ProductID: 1, Quantity: 1}}},
+						{Options: []models.PricingPromotionItem{{ProductID: 2, Quantity: 1}}},
+					},
+				}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.AppliedPromotion == nil {
+				t.Fatal("AppliedPromotion is nil")
+			}
+			assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, "300.00")
+			assertPricingAmount(t, result.AppliedPromotion.PromotionPrice, "240.00")
+			assertPricingAmount(t, result.Discount, "60.00")
+			wantNet := "240.00"
+			if quantity == 5 {
+				wantNet = "540.00"
+			}
+			assertPricingAmount(t, result.NetTotal, wantNet)
+		})
 	}
-	if result.AppliedPromotion.PromotionID != 12 {
-		t.Fatalf("PromotionID = %d, want 12", result.AppliedPromotion.PromotionID)
-	}
-	assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, "100.00")
-	assertPricingAmount(t, result.AppliedPromotion.PromotionPrice, "70.00")
 }
 
 func TestPricingServiceSelectsHighestDiscountAndLowestIDOnTie(t *testing.T) {
@@ -196,6 +242,152 @@ func TestPricingServiceRequiresEveryORGroup(t *testing.T) {
 	}
 	if result.AppliedPromotion != nil {
 		t.Fatalf("AppliedPromotion = %+v, want nil", result.AppliedPromotion)
+	}
+}
+
+func TestPricingServiceRepeatsORGroups(t *testing.T) {
+	largeID, xlargeID := int64(22), int64(23)
+	tests := []struct {
+		name                    string
+		pins                    int32
+		original, discount, net string
+	}{
+		{"one set prefers XL", 1, "400.00", "100.00", "600.00"},
+		{"L and XL make two sets", 2, "750.00", "150.00", "600.00"},
+		{"extra pin remains full price", 3, "750.00", "150.00", "650.00"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := NewPricingService().Calculate(
+				[]models.PricingCartLine{
+					{ProductID: 10, VariantID: &largeID, Quantity: 1, UnitPrice: pricingTestAmount(t, "300.00")},
+					{ProductID: 10, VariantID: &xlargeID, Quantity: 1, UnitPrice: pricingTestAmount(t, "350.00")},
+					{ProductID: 11, Quantity: test.pins, UnitPrice: pricingTestAmount(t, "50.00")},
+				},
+				[]models.PricingPromotion{{
+					PromotionID: 1, PromotionPrice: pricingTestAmount(t, "300.00"),
+					ItemGroups: []models.PricingPromotionItemGroup{
+						{Options: []models.PricingPromotionItem{
+							{ProductID: 10, VariantID: &largeID, Quantity: 1},
+							{ProductID: 10, VariantID: &xlargeID, Quantity: 1},
+						}},
+						{Options: []models.PricingPromotionItem{{ProductID: 11, Quantity: 1}}},
+					},
+				}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.AppliedPromotion == nil {
+				t.Fatal("AppliedPromotion is nil")
+			}
+			assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, test.original)
+			assertPricingAmount(t, result.Discount, test.discount)
+			assertPricingAmount(t, result.NetTotal, test.net)
+		})
+	}
+}
+
+func TestPricingServiceRanksOROptionsByRequiredQuantityValue(t *testing.T) {
+	cart := []models.PricingCartLine{
+		{ProductID: 1, Quantity: 2, UnitPrice: pricingTestAmount(t, "100.00")},
+		{ProductID: 2, Quantity: 5, UnitPrice: pricingTestAmount(t, "60.00")},
+		{ProductID: 3, Quantity: 3, UnitPrice: pricingTestAmount(t, "10.00")},
+	}
+	promotions := []models.PricingPromotion{{
+		PromotionID: 1, PromotionPrice: pricingTestAmount(t, "100.00"),
+		ItemGroups: []models.PricingPromotionItemGroup{
+			{Options: []models.PricingPromotionItem{{ProductID: 1, Quantity: 1}, {ProductID: 2, Quantity: 2}}},
+			{Options: []models.PricingPromotionItem{{ProductID: 3, Quantity: 1}}},
+		},
+	}}
+	cartBefore := append([]models.PricingCartLine(nil), cart...)
+	optionsBefore := append([]models.PricingPromotionItem(nil), promotions[0].ItemGroups[0].Options...)
+	result, err := NewPricingService().Calculate(cart, promotions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AppliedPromotion == nil {
+		t.Fatal("AppliedPromotion is nil")
+	}
+	// Two 2x60 options outrank 1x100; only one of the two 1x100 options fits.
+	assertPricingAmount(t, result.Subtotal, "530.00")
+	assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, "370.00")
+	assertPricingAmount(t, result.AppliedPromotion.PromotionPrice, "300.00")
+	assertPricingAmount(t, result.Discount, "70.00")
+	assertPricingAmount(t, result.NetTotal, "460.00")
+	if !reflect.DeepEqual(cart, cartBefore) || !reflect.DeepEqual(promotions[0].ItemGroups[0].Options, optionsBefore) {
+		t.Fatal("pricing mutated the cart or sorted the input options")
+	}
+}
+
+func TestPricingServiceComparesRepeatedDiscounts(t *testing.T) {
+	for _, price := range []string{"70.00", "75.00"} {
+		t.Run(price, func(t *testing.T) {
+			promotions := []models.PricingPromotion{
+				{PromotionID: 9, PromotionPrice: pricingTestAmount(t, price), Items: []models.PricingPromotionItem{{ProductID: 1, Quantity: 1}}},
+				{PromotionID: 4, PromotionPrice: pricingTestAmount(t, "150.00"), Items: []models.PricingPromotionItem{{ProductID: 1, Quantity: 2}}},
+			}
+			for _, ordered := range [][]models.PricingPromotion{promotions, {promotions[1], promotions[0]}} {
+				result, err := NewPricingService().Calculate(
+					[]models.PricingCartLine{{ProductID: 1, Quantity: 4, UnitPrice: pricingTestAmount(t, "100.00")}}, ordered,
+				)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantID, discount := int64(9), "120.00"
+				if price == "75.00" {
+					wantID, discount = 4, "100.00"
+				}
+				if result.AppliedPromotion == nil || result.AppliedPromotion.PromotionID != wantID {
+					t.Fatalf("promotion = %+v, want %d", result.AppliedPromotion, wantID)
+				}
+				assertPricingAmount(t, result.Discount, discount)
+			}
+		})
+	}
+}
+
+func TestPricingServiceHandlesMoreThanInt32Applications(t *testing.T) {
+	result, err := NewPricingService().Calculate(
+		[]models.PricingCartLine{
+			{ProductID: 1, Quantity: math.MaxInt32, UnitPrice: pricingTestAmount(t, "1.00")},
+			{ProductID: 2, Quantity: math.MaxInt32, UnitPrice: pricingTestAmount(t, "1.00")},
+		},
+		[]models.PricingPromotion{{
+			PromotionID: 1, PromotionPrice: pricingTestAmount(t, "0.50"),
+			ItemGroups: []models.PricingPromotionItemGroup{{Options: []models.PricingPromotionItem{
+				{ProductID: 1, Quantity: 1}, {ProductID: 2, Quantity: 1},
+			}}},
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AppliedPromotion == nil {
+		t.Fatal("AppliedPromotion is nil")
+	}
+	assertPricingAmount(t, result.Subtotal, "4294967294.00")
+	assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, "4294967294.00")
+	assertPricingAmount(t, result.AppliedPromotion.PromotionPrice, "2147483647.00")
+	assertPricingAmount(t, result.Discount, "2147483647.00")
+	assertPricingAmount(t, result.NetTotal, "2147483647.00")
+}
+
+func TestPricingServiceRejectsRepeatedPromotionPriceOverflow(t *testing.T) {
+	maximum, err := models.NewTHBAmountFromSatang(math.MaxInt64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := NewPricingService().Calculate(
+		[]models.PricingCartLine{{ProductID: 1, Quantity: 2, UnitPrice: pricingTestAmount(t, "1.00")}},
+		[]models.PricingPromotion{{PromotionID: 1, PromotionPrice: maximum, Items: []models.PricingPromotionItem{{ProductID: 1, Quantity: 1}}}},
+	)
+	if !errors.Is(err, ErrPricingInvalidPromotion) || !errors.Is(err, models.ErrTHBAmountOverflow) {
+		t.Fatalf("error = %v, want invalid promotion with THB overflow", err)
+	}
+	if result != (models.PricingResult{}) {
+		t.Fatalf("result on error = %+v, want zero result", result)
 	}
 }
 
