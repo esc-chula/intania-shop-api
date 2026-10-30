@@ -318,7 +318,9 @@ func newOrderIntegrationFixture(t *testing.T, database *pgxpool.Pool) orderInteg
 	if err != nil {
 		t.Fatalf("create promotion fixture: %v", err)
 	}
+	applications := int64(1)
 	applied := &models.AppliedProjectPromotion{
+		ApplicationCount:    &applications,
 		PromotionID:         promotion.PromotionID,
 		Name:                promotion.Name,
 		OriginalBundlePrice: mustPromotionAmount(t, "180.00"),

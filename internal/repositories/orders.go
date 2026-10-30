@@ -29,7 +29,7 @@ const orderHistoryColumns = `o.order_id, o.order_number, o.project_id, o.status:
 	pay.method::text, pay.slip_url, pay.received_amount::text,
 	pay.change_amount::text, pay.retained_amount::text, pay.no_change, pay.note,
 	promo.promotion_id, promo.name, promo.original_bundle_price::text,
-	promo.promotion_price::text, promo.discount::text`
+	promo.promotion_price::text, promo.discount::text, promo.application_count`
 
 const orderHistoryFrom = ` FROM orders o
 	JOIN order_payments pay ON pay.order_id = o.order_id
@@ -226,20 +226,21 @@ type orderHistoryScanner interface{ Scan(dest ...any) error }
 
 func scanOrderHistory(row orderHistoryScanner, extra ...any) (models.POSOrder, error) {
 	var (
-		order          models.POSOrder
-		gender         string
-		subtotal       string
-		discount       string
-		netTotal       string
-		method         string
-		receivedAmount *string
-		changeAmount   *string
-		retainedAmount *string
-		promotionID    *int64
-		promotionName  *string
-		bundlePrice    *string
-		promotionPrice *string
-		promotionSaved *string
+		order            models.POSOrder
+		gender           string
+		subtotal         string
+		discount         string
+		netTotal         string
+		method           string
+		receivedAmount   *string
+		changeAmount     *string
+		retainedAmount   *string
+		promotionID      *int64
+		promotionName    *string
+		bundlePrice      *string
+		promotionPrice   *string
+		promotionSaved   *string
+		applicationCount *int64
 	)
 
 	destinations := append([]any{
@@ -250,7 +251,7 @@ func scanOrderHistory(row orderHistoryScanner, extra ...any) (models.POSOrder, e
 		&subtotal, &discount, &netTotal, &order.CreatedAt,
 		&method, &order.Payment.SlipURL, &receivedAmount,
 		&changeAmount, &retainedAmount, &order.Payment.NoChange, &order.Payment.Note,
-		&promotionID, &promotionName, &bundlePrice, &promotionPrice, &promotionSaved,
+		&promotionID, &promotionName, &bundlePrice, &promotionPrice, &promotionSaved, &applicationCount,
 	}, extra...)
 	if err := row.Scan(destinations...); err != nil {
 		return models.POSOrder{}, fmt.Errorf("scan order: %w", err)
@@ -282,7 +283,7 @@ func scanOrderHistory(row orderHistoryScanner, extra ...any) (models.POSOrder, e
 		if promotionName == nil || bundlePrice == nil || promotionPrice == nil || promotionSaved == nil {
 			return models.POSOrder{}, fmt.Errorf("%w: order %d has an incomplete promotion snapshot", ErrPOSDataCorrupt, order.OrderID)
 		}
-		promotion := models.AppliedProjectPromotion{PromotionID: *promotionID, Name: *promotionName}
+		promotion := models.AppliedProjectPromotion{PromotionID: *promotionID, Name: *promotionName, ApplicationCount: applicationCount}
 		if promotion.OriginalBundlePrice, err = parsePOSOrderAmount(order.OrderID, *bundlePrice); err != nil {
 			return models.POSOrder{}, err
 		}

@@ -444,14 +444,17 @@ func insertPOSOrderPromotion(ctx context.Context, tx pgx.Tx, orderID int64, plan
 	if promotion == nil {
 		return nil
 	}
+	if promotion.ApplicationCount == nil || *promotion.ApplicationCount <= 0 {
+		return fmt.Errorf("%w: new order promotion requires a positive application count", ErrPOSDataCorrupt)
+	}
 
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO order_promotions (
-		    order_id, promotion_id, name, original_bundle_price, promotion_price, discount)
-		VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric)`,
+		    order_id, promotion_id, name, original_bundle_price, promotion_price, discount, application_count)
+		VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, $7)`,
 		orderID, promotion.PromotionID, promotion.Name,
 		promotion.OriginalBundlePrice.String(), promotion.PromotionPrice.String(),
-		promotion.Discount.String()); err != nil {
+		promotion.Discount.String(), promotion.ApplicationCount); err != nil {
 		return fmt.Errorf("insert POS order promotion: %w", err)
 	}
 
@@ -463,20 +466,21 @@ func insertPOSOrderPromotion(ctx context.Context, tx pgx.Tx, orderID int64, plan
 // staff and buyer snapshot.
 func readPOSOrder(ctx context.Context, queryer promotionQueryer, orderID int64) (models.POSOrder, error) {
 	var (
-		order          models.POSOrder
-		gender         string
-		subtotal       string
-		discount       string
-		netTotal       string
-		method         string
-		receivedAmount *string
-		changeAmount   *string
-		retainedAmount *string
-		promotionID    *int64
-		promotionName  *string
-		bundlePrice    *string
-		promotionPrice *string
-		promotionSaved *string
+		order            models.POSOrder
+		gender           string
+		subtotal         string
+		discount         string
+		netTotal         string
+		method           string
+		receivedAmount   *string
+		changeAmount     *string
+		retainedAmount   *string
+		promotionID      *int64
+		promotionName    *string
+		bundlePrice      *string
+		promotionPrice   *string
+		promotionSaved   *string
+		applicationCount *int64
 	)
 
 	err := queryer.QueryRow(ctx, `
@@ -488,7 +492,7 @@ func readPOSOrder(ctx context.Context, queryer promotionQueryer, orderID int64) 
 		       pay.method::text, pay.slip_url, pay.received_amount::text,
 		       pay.change_amount::text, pay.retained_amount::text, pay.no_change, pay.note,
 		       promo.promotion_id, promo.name, promo.original_bundle_price::text,
-		       promo.promotion_price::text, promo.discount::text
+		       promo.promotion_price::text, promo.discount::text, promo.application_count
 		FROM orders o
 		JOIN order_payments pay ON pay.order_id = o.order_id
 		LEFT JOIN order_promotions promo ON promo.order_id = o.order_id
@@ -500,7 +504,7 @@ func readPOSOrder(ctx context.Context, queryer promotionQueryer, orderID int64) 
 		&subtotal, &discount, &netTotal, &order.CreatedAt,
 		&method, &order.Payment.SlipURL, &receivedAmount,
 		&changeAmount, &retainedAmount, &order.Payment.NoChange, &order.Payment.Note,
-		&promotionID, &promotionName, &bundlePrice, &promotionPrice, &promotionSaved)
+		&promotionID, &promotionName, &bundlePrice, &promotionPrice, &promotionSaved, &applicationCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return models.POSOrder{}, fmt.Errorf("%w: order %d has no payment snapshot", ErrPOSDataCorrupt, orderID)
 	}
@@ -535,7 +539,7 @@ func readPOSOrder(ctx context.Context, queryer promotionQueryer, orderID int64) 
 		if promotionName == nil || bundlePrice == nil || promotionPrice == nil || promotionSaved == nil {
 			return models.POSOrder{}, fmt.Errorf("%w: order %d has an incomplete promotion snapshot", ErrPOSDataCorrupt, orderID)
 		}
-		applied := models.AppliedProjectPromotion{PromotionID: *promotionID, Name: *promotionName}
+		applied := models.AppliedProjectPromotion{PromotionID: *promotionID, Name: *promotionName, ApplicationCount: applicationCount}
 		if applied.OriginalBundlePrice, err = parsePOSOrderAmount(orderID, *bundlePrice); err != nil {
 			return models.POSOrder{}, err
 		}
