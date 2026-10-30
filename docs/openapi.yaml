@@ -1249,11 +1249,14 @@ components:
     AppliedProjectPromotion:
       type: object
       additionalProperties: false
-      description: Snapshot totals across every application of the selected promotion. Prices in promotion CRUD remain per set.
-      required: [promotion_id, name, original_bundle_price, promotion_price, discount]
+      description: Snapshot totals across every application of the selected promotion. Prices in promotion CRUD remain per set. application_count is always positive for quotes and new orders; historical order snapshots without a recorded count return null.
+      required: [promotion_id, name, application_count, original_bundle_price, promotion_price, discount]
       properties:
         promotion_id: { type: integer, format: int64, minimum: 1 }
         name: { type: string, maxLength: 150 }
+        application_count:
+          oneOf: [{ type: integer, format: int64, minimum: 1 }, { type: "null" }]
+          description: Number of complete sets applied. Null only for historical orders saved without a count.
         original_bundle_price: { $ref: "#/components/schemas/THBAmount", description: Total regular price of all matched quantities across every application }
         promotion_price: { $ref: "#/components/schemas/THBAmount", description: Per-set promotion price multiplied by the number of applications }
         discount: { $ref: "#/components/schemas/THBAmount", description: Total original_bundle_price minus total promotion_price }
@@ -1683,7 +1686,7 @@ components:
             - { product_id: 10, variant_id: 22, product_name: Intania Shirt, size: M, color: Navy, image_url: "https://example.com/shirt.png", quantity: 2, unit_price: "299.00", line_total: "598.00", available_quantity: 20 }
             - { product_id: 11, variant_id: null, product_name: Enamel Pin, size: null, color: null, image_url: "https://example.com/pin.png", quantity: 2, unit_price: "59.00", line_total: "118.00", available_quantity: 50 }
           subtotal: "716.00"
-          applied_promotion: { promotion_id: 3, name: Shirt and pin set, original_bundle_price: "716.00", promotion_price: "658.00", discount: "58.00" }
+          applied_promotion: { promotion_id: 3, name: Shirt and pin set, application_count: 2, original_bundle_price: "716.00", promotion_price: "658.00", discount: "58.00" }
           discount: "58.00"
           net_total: "658.00"
           quoted_at: "2026-09-05T10:30:00+07:00"
@@ -1709,7 +1712,7 @@ components:
           items:
             - { order_item_id: 1, product_id: 10, variant_id: 22, product_name: Intania Shirt, size: M, color: Navy, image_url: "https://example.com/shirt.png", quantity: 1, unit_price: "299.00", line_total: "299.00", inventory_transaction_id: 701 }
             - { order_item_id: 2, product_id: 11, variant_id: null, product_name: Enamel Pin, size: null, color: null, image_url: "https://example.com/pin.png", quantity: 1, unit_price: "59.00", line_total: "59.00", inventory_transaction_id: 702 }
-          applied_promotion: { promotion_id: 3, name: Shirt and pin set, original_bundle_price: "358.00", promotion_price: "329.00", discount: "29.00" }
+          applied_promotion: { promotion_id: 3, name: Shirt and pin set, application_count: 1, original_bundle_price: "358.00", promotion_price: "329.00", discount: "29.00" }
           subtotal: "358.00"
           discount: "29.00"
           net_total: "329.00"

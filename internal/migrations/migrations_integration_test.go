@@ -196,6 +196,81 @@ func TestOrderOperatorNameMigrationPreservesExistingSnapshots(t *testing.T) {
 	}
 }
 
+func TestPromotionApplicationCountMigrationPreservesHistoricalSnapshots(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := Apply(ctx, dsn, logger); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	migrationFS, err := fs.Sub(files, "sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, database, migrationFS, goose.WithSlog(logger))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(ctx, 12); err != nil {
+		t.Fatal(err)
+	}
+	var orderID int64
+	if err := database.QueryRowContext(ctx, `INSERT INTO orders
+		(order_number, staff_full_name, subtotal, discount, net_total)
+		VALUES ('promotion-count-migration-test', 'Original staff', 1600, 800, 800)
+		RETURNING order_id`).Scan(&orderID); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := database.ExecContext(ctx, `DELETE FROM orders WHERE order_id = $1`, orderID); err != nil {
+			t.Error(err)
+		}
+	}()
+	if _, err := database.ExecContext(ctx, `INSERT INTO order_promotions
+		(order_id, promotion_id, name, original_bundle_price, promotion_price, discount)
+		VALUES ($1, 1, 'Historical bundle', 1600, 800, 800)`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var count sql.NullInt64
+	if err := database.QueryRowContext(ctx, `SELECT application_count FROM order_promotions WHERE order_id = $1`, orderID).Scan(&count); err != nil || count.Valid {
+		t.Fatalf("historical count = %+v, error = %v; want NULL", count, err)
+	}
+	for _, invalid := range []int64{0, -1} {
+		if _, err := database.ExecContext(ctx, `UPDATE order_promotions SET application_count = $1 WHERE order_id = $2`, invalid, orderID); err == nil {
+			t.Fatalf("application_count %d should violate check constraint", invalid)
+		}
+	}
+	if _, err := database.ExecContext(ctx, `UPDATE order_promotions SET application_count = 2 WHERE order_id = $1`, orderID); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRowContext(ctx, `SELECT application_count FROM order_promotions WHERE order_id = $1`, orderID).Scan(&count); err != nil || !count.Valid || count.Int64 != 2 {
+		t.Fatalf("stored count = %+v, error = %v; want 2", count, err)
+	}
+	if _, err := provider.DownTo(ctx, 12); err != nil {
+		t.Fatal(err)
+	}
+	assertNames(t, database, `SELECT column_name FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'order_promotions' AND column_name = 'application_count'`, nil)
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var discount string
+	if err := database.QueryRowContext(ctx, `SELECT application_count, discount::text FROM order_promotions WHERE order_id = $1`, orderID).Scan(&count, &discount); err != nil || count.Valid || discount != "800.00" {
+		t.Fatalf("snapshot after rollback/reapply: count = %+v, discount = %q, error = %v", count, discount, err)
+	}
+}
+
 func assertNames(t *testing.T, database *sql.DB, query string, want []string) {
 	t.Helper()
 	rows, err := database.Query(query)

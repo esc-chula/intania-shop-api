@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -166,7 +167,7 @@ func TestPOSServiceQuoteAndCheckoutRepeatTheSamePromotion(t *testing.T) {
 	assertAmount(t, quote.Subtotal, "180.00")
 	assertAmount(t, quote.Discount, "40.00")
 	assertAmount(t, quote.NetTotal, "140.00")
-	if quote.AppliedPromotion == nil || store.plan.AppliedPromotion == nil || *quote.AppliedPromotion != *store.plan.AppliedPromotion {
+	if quote.AppliedPromotion == nil || store.plan.AppliedPromotion == nil || !reflect.DeepEqual(quote.AppliedPromotion, store.plan.AppliedPromotion) {
 		t.Fatalf("quote promotion=%+v, checkout promotion=%+v", quote.AppliedPromotion, store.plan.AppliedPromotion)
 	}
 	assertAmount(t, quote.AppliedPromotion.OriginalBundlePrice, "180.00")
@@ -211,7 +212,7 @@ func TestPOSServiceQuoteAndCheckoutPoolSelectedVariants(t *testing.T) {
 	assertAmount(t, quote.Subtotal, "800.00")
 	assertAmount(t, quote.Discount, "400.00")
 	assertAmount(t, quote.NetTotal, "400.00")
-	if quote.AppliedPromotion == nil || store.plan.AppliedPromotion == nil || *quote.AppliedPromotion != *store.plan.AppliedPromotion || store.plan.NetTotal != quote.NetTotal || store.plan.Discount != quote.Discount {
+	if quote.AppliedPromotion == nil || store.plan.AppliedPromotion == nil || !reflect.DeepEqual(quote.AppliedPromotion, store.plan.AppliedPromotion) || store.plan.NetTotal != quote.NetTotal || store.plan.Discount != quote.Discount {
 		t.Fatalf("quote=%+v, checkout plan=%+v", quote, store.plan)
 	}
 	assertAmount(t, *store.plan.Payment.ChangeAmount, "100.00")

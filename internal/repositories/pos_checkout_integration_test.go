@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -325,7 +326,9 @@ func TestPOSRepositoryCheckoutSnapshotsTheAppliedPromotion(t *testing.T) {
 	repository := NewPOSRepository(database)
 	command := cashCheckoutCommand(t, fixture, staffID, "checkout-key-10", "150.00", true)
 
+	applications := int64(1)
 	applied := &models.AppliedProjectPromotion{
+		ApplicationCount:    &applications,
 		PromotionID:         promotion.PromotionID,
 		Name:                promotion.Name,
 		OriginalBundlePrice: mustPromotionAmount(t, "180.00"),
@@ -443,11 +446,18 @@ func testPOSPromotionSnapshotAndReplay(t *testing.T, pooledQuantity int32) {
 	assertOrderAmount(t, order.Discount, wantDiscount)
 	assertOrderAmount(t, order.NetTotal, wantNet)
 	assertOrderAmount(t, *order.Payment.ChangeAmount, wantChange)
-	if order.AppliedPromotion == nil || quote.AppliedPromotion == nil || *order.AppliedPromotion != *quote.AppliedPromotion {
+	if order.AppliedPromotion == nil || quote.AppliedPromotion == nil || !reflect.DeepEqual(order.AppliedPromotion, quote.AppliedPromotion) {
 		t.Fatalf("order promotion=%+v, quote promotion=%+v", order.AppliedPromotion, quote.AppliedPromotion)
 	}
 	assertOrderAmount(t, order.AppliedPromotion.OriginalBundlePrice, wantSubtotal)
 	assertOrderAmount(t, order.AppliedPromotion.PromotionPrice, wantNet)
+	wantApplications := int64(2)
+	if pooledQuantity == 1 {
+		wantApplications = 1
+	}
+	if order.AppliedPromotion.ApplicationCount == nil || *order.AppliedPromotion.ApplicationCount != wantApplications {
+		t.Fatalf("application count = %v, want %d", order.AppliedPromotion.ApplicationCount, wantApplications)
+	}
 	if quote.Subtotal != order.Subtotal || quote.Discount != order.Discount || quote.NetTotal != order.NetTotal {
 		t.Fatalf("quote totals differ from order: quote=%+v, order=%+v", quote, order)
 	}
@@ -460,12 +470,19 @@ func testPOSPromotionSnapshotAndReplay(t *testing.T, pooledQuantity int32) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	listed, total, err := NewOrderRepository(database).List(ctx, fixture.ProjectID, models.OrderFilter{
+		SortBy: models.OrderSortByOrderNumber, SortOrder: models.OrderSortAsc,
+		CreatedFrom: time.Now().Add(-time.Hour), CreatedTo: time.Now().Add(time.Hour),
+	}, 0, 10)
+	if err != nil || total != 1 || len(listed) != 1 || !reflect.DeepEqual(listed[0].AppliedPromotion, order.AppliedPromotion) {
+		t.Fatalf("listed promotion = %+v, total = %d, error = %v", listed, total, err)
+	}
 	retry, replayed, err := service.Checkout(ctx, fixture.ProjectID, staffID, key, request)
 	if err != nil || !replayed || retry.OrderID != order.OrderID {
 		t.Fatalf("retry order=%+v, replayed=%t, error=%v", retry, replayed, err)
 	}
 	for _, read := range []models.POSOrder{stored, retry} {
-		if read.AppliedPromotion == nil || *read.AppliedPromotion != *order.AppliedPromotion || read.NetTotal != order.NetTotal || read.Discount != order.Discount {
+		if read.AppliedPromotion == nil || !reflect.DeepEqual(read.AppliedPromotion, order.AppliedPromotion) || read.NetTotal != order.NetTotal || read.Discount != order.Discount {
 			t.Fatalf("stored promotion/totals changed: %+v", read)
 		}
 	}
@@ -487,6 +504,58 @@ func testPOSPromotionSnapshotAndReplay(t *testing.T, pooledQuantity int32) {
 	}
 	if snapshots != 1 || transactions != wantTransactions {
 		t.Fatalf("promotion snapshots=%d, stock transactions=%d; want 1 and %d", snapshots, transactions, wantTransactions)
+	}
+
+	// Historical snapshots have no count. Reads/replays must preserve NULL,
+	// including after the live promotion has been deleted.
+	if _, err := database.Exec(ctx, `UPDATE order_promotions SET application_count = NULL WHERE order_id = $1`, order.OrderID); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := NewOrderRepository(database).Detail(ctx, fixture.ProjectID, order.OrderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyList, _, err := NewOrderRepository(database).List(ctx, fixture.ProjectID, models.OrderFilter{
+		SortBy: models.OrderSortByOrderNumber, SortOrder: models.OrderSortAsc,
+		CreatedFrom: time.Now().Add(-time.Hour), CreatedTo: time.Now().Add(time.Hour),
+	}, 0, 10)
+	if err != nil || len(legacyList) != 1 {
+		t.Fatalf("historical list = %+v, error = %v", legacyList, err)
+	}
+	legacyRetry, replayed, err := service.Checkout(ctx, fixture.ProjectID, staffID, key, request)
+	if err != nil || !replayed {
+		t.Fatalf("historical replay = %t, error = %v", replayed, err)
+	}
+	for _, read := range []models.POSOrder{legacy, legacyList[0], legacyRetry} {
+		if read.AppliedPromotion == nil || read.AppliedPromotion.ApplicationCount != nil || read.Discount != order.Discount || read.NetTotal != order.NetTotal {
+			t.Fatalf("historical promotion/totals = %+v", read)
+		}
+	}
+}
+
+func TestPOSCheckoutRejectsMissingOrInvalidPromotionApplicationCount(t *testing.T) {
+	database := openPromotionIntegrationDatabase(t)
+	fixture := newPromotionIntegrationFixture(t, database)
+	staffID := insertCheckoutStaff(t, database)
+	setCheckoutStock(t, database, fixture, 7, 3, 5)
+	zero, negative := int64(0), int64(-1)
+	for index, count := range []*int64{nil, &zero, &negative} {
+		command := cashCheckoutCommand(t, fixture, staffID, fmt.Sprintf("invalid-count-%d", index), "200.00", true)
+		promotion := &models.AppliedProjectPromotion{
+			PromotionID: 1, Name: "Invalid count", ApplicationCount: count,
+			OriginalBundlePrice: mustPromotionAmount(t, "180.00"),
+			PromotionPrice:      mustPromotionAmount(t, "150.00"), Discount: mustPromotionAmount(t, "30.00"),
+		}
+		_, _, err := NewPOSRepository(database).Checkout(context.Background(), fixture.Today, command, checkoutPlanner(t, command, promotion))
+		if !errors.Is(err, ErrPOSDataCorrupt) {
+			t.Fatalf("count %v: error = %v, want invalid plan error", count, err)
+		}
+	}
+	if got := countProjectOrders(t, database, fixture.ProjectID); got != 0 {
+		t.Fatalf("rejected plans left %d orders", got)
+	}
+	if product, variant := readProductStock(t, database, fixture.ProductAID), readVariantStock(t, database, fixture.VariantOneID); product != 7 || variant != 3 {
+		t.Fatalf("rejected plans changed stock: product = %d, variant = %d", product, variant)
 	}
 }
 
