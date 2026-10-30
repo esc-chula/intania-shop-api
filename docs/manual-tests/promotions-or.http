@@ -7,6 +7,7 @@
 @pinProductId = 11
 @promotionId = replace-with-created-promotion-id
 @orderId = replace-with-created-order-id
+@legacyOrderId = replace-with-pre-migration-order-id
 # Change this key for a new checkout; preserve it for the replay below.
 @repeatKey = repeated-promotion-test-1
 @poolKey = pooled-variant-test-1
@@ -91,7 +92,7 @@ Content-Type: application/json
 }
 
 ### Mixed options make two sets — 200, subtotal=750.00, discount=150.00, net_total=600.00
-# applied_promotion: original_bundle_price=750.00, promotion_price=600.00, discount=150.00.
+# applied_promotion: application_count=2, original_bundle_price=750.00, promotion_price=600.00, discount=150.00.
 # Quote reserves no stock.
 POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
 Authorization: Bearer {{adminToken}}
@@ -100,7 +101,7 @@ Content-Type: application/json
 {"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":1},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":1},{"product_id":{{pinProductId}},"variant_id":null,"quantity":2}]}
 
 ### Incomplete remainder stays full price — 200, subtotal=800.00, discount=150.00, net_total=650.00
-# applied_promotion totals remain 750.00 / 600.00 / 150.00.
+# applied_promotion totals remain 750.00 / 600.00 / 150.00; application_count=2.
 POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
@@ -108,7 +109,7 @@ Content-Type: application/json
 {"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":1},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":1},{"product_id":{{pinProductId}},"variant_id":null,"quantity":3}]}
 
 ### Checkout both sets — 201, same totals as two-set quote, change_amount=100.00
-# Stock decreases by L:1, XL:1, pin:2; exactly one promotion snapshot is stored.
+# Stock decreases by L:1, XL:1, pin:2; one snapshot with application_count=2 is stored.
 POST {{baseUrl}}/projects/{{projectId}}/orders
 Authorization: Bearer {{adminToken}}
 Idempotency-Key: {{repeatKey}}
@@ -125,7 +126,7 @@ Content-Type: application/json
 {"buyer":{"gender":"PREFER_NOT_TO_SAY"},"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":1},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":1},{"product_id":{{pinProductId}},"variant_id":null,"quantity":2}],"payment":{"method":"REAL_MONEY","received_amount":"700.00","no_change":false}}
 
 ### Detail — 200; saved applied_promotion totals are 750.00 / 600.00 / 150.00
-# Set orderId from checkout. Totals remain unchanged if the promotion is later edited/deleted.
+# Set orderId from checkout. application_count=2 and totals stay unchanged after promotion edits/deletion.
 GET {{baseUrl}}/projects/{{projectId}}/orders/{{orderId}}
 Authorization: Bearer {{adminToken}}
 
@@ -148,7 +149,7 @@ Content-Type: application/json
 }
 
 ### One L plus one XL — 200, subtotal=800.00, discount=400.00, net_total=400.00
-# applied_promotion: original_bundle_price=800.00, promotion_price=400.00, discount=400.00.
+# applied_promotion: application_count=1, original_bundle_price=800.00, promotion_price=400.00, discount=400.00.
 POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
 Authorization: Bearer {{adminToken}}
 Content-Type: application/json
@@ -189,3 +190,21 @@ Content-Type: application/json
 
 # For differing prices L=400.00 and XL=450.00, the same pair still costs the fixed
 # promotion_price 400.00: original_bundle_price=850.00 and discount=450.00.
+
+### Two of each selected size — 200, application_count=2, subtotal=1600.00, discount=800.00, net_total=800.00
+# Use the two-piece 400.00 promotion above with both variant prices at 400.00.
+POST {{baseUrl}}/projects/{{projectId}}/checkout/quote
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{"items":[{"product_id":{{shirtProductId}},"variant_id":{{largeVariantId}},"quantity":2},{"product_id":{{shirtProductId}},"variant_id":{{xlargeVariantId}},"quantity":2}]}
+
+### Order list — 200; each new promoted order includes its saved application_count
+GET {{baseUrl}}/projects/{{projectId}}/orders
+Authorization: Bearer {{adminToken}}
+
+### Historical order — 200; applied_promotion.application_count=null
+# Set legacyOrderId to a promoted order created before migration 00013.
+# No promotion still returns applied_promotion=null; do not infer a count from monetary fields.
+GET {{baseUrl}}/projects/{{projectId}}/orders/{{legacyOrderId}}
+Authorization: Bearer {{adminToken}}
