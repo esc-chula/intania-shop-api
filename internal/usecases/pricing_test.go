@@ -10,6 +10,16 @@ import (
 	"github.com/esc-chula/intania-shop-api/internal/models"
 )
 
+func assertPricingApplicationCount(t *testing.T, promotion *models.AppliedProjectPromotion, want int64) {
+	t.Helper()
+	if promotion == nil || promotion.ApplicationCount == nil {
+		t.Fatalf("promotion application count is missing: %+v", promotion)
+	}
+	if *promotion.ApplicationCount != want {
+		t.Fatalf("application count = %d, want %d", *promotion.ApplicationCount, want)
+	}
+}
+
 func TestPricingServiceCalculatesSubtotalWithoutMatchingPromotion(t *testing.T) {
 	service := NewPricingService()
 	cart := []models.PricingCartLine{
@@ -74,6 +84,7 @@ func TestPricingServiceRepeatsEligiblePromotion(t *testing.T) {
 			assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, test.original)
 			assertPricingAmount(t, result.AppliedPromotion.PromotionPrice, test.total)
 			assertPricingAmount(t, result.AppliedPromotion.Discount, test.discount)
+			assertPricingApplicationCount(t, result.AppliedPromotion, int64(test.quantity/test.required))
 		})
 	}
 }
@@ -102,6 +113,7 @@ func TestPricingServiceLimitsRepeatedPromotionByEveryGroup(t *testing.T) {
 			}
 			assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, "300.00")
 			assertPricingAmount(t, result.AppliedPromotion.PromotionPrice, "240.00")
+			assertPricingApplicationCount(t, result.AppliedPromotion, 2)
 			assertPricingAmount(t, result.Discount, "60.00")
 			wantNet := "240.00"
 			if quantity == 5 {
@@ -332,6 +344,7 @@ func TestPricingServicePoolsSelectedVariantQuantities(t *testing.T) {
 	}{
 		{name: "XS and S", quantities: [4]int32{1, 1}, original: "800.00", discount: "400.00", net: "400.00"},
 		{name: "two XS", quantities: [4]int32{2}, original: "800.00", discount: "400.00", net: "400.00"},
+		{name: "two XS and two S", quantities: [4]int32{2, 2}, original: "1600.00", discount: "800.00", net: "800.00"},
 		{name: "three XS and one S", quantities: [4]int32{3, 1}, original: "1600.00", discount: "800.00", net: "800.00"},
 		{name: "three selected sizes", quantities: [4]int32{1, 1, 1}, original: "800.00", discount: "400.00", net: "800.00"},
 		{name: "incomplete set", quantities: [4]int32{1}, discount: "0.00", net: "400.00"},
@@ -381,6 +394,8 @@ func TestPricingServicePoolsSelectedVariantQuantities(t *testing.T) {
 					t.Fatal("AppliedPromotion is nil")
 				}
 				assertPricingAmount(t, result.AppliedPromotion.OriginalBundlePrice, test.original)
+				selected := int64(test.quantities[0]) + int64(test.quantities[1]) + int64(test.quantities[2])
+				assertPricingApplicationCount(t, result.AppliedPromotion, selected/2)
 			}
 			if !reflect.DeepEqual(cart, cartBefore) || !reflect.DeepEqual(options, optionsBefore) {
 				t.Fatal("pricing mutated the cart or variant options")
@@ -411,6 +426,11 @@ func TestPricingServiceComparesRepeatedDiscounts(t *testing.T) {
 					t.Fatalf("promotion = %+v, want %d", result.AppliedPromotion, wantID)
 				}
 				assertPricingAmount(t, result.Discount, discount)
+				wantApplications := int64(4)
+				if wantID == 4 {
+					wantApplications = 2
+				}
+				assertPricingApplicationCount(t, result.AppliedPromotion, wantApplications)
 			}
 		})
 	}

@@ -84,6 +84,7 @@ func (service *PricingService) Calculate(cart []models.PricingCartLine, promotio
 	result.AppliedPromotion = &models.AppliedProjectPromotion{
 		PromotionID:         best.promotionID,
 		Name:                best.name,
+		ApplicationCount:    &best.applicationCount,
 		OriginalBundlePrice: best.bundlePrice,
 		PromotionPrice:      best.promotionPrice,
 		Discount:            best.discount,
@@ -209,11 +210,12 @@ func calculatePricingSubtotal(cart []models.PricingCartLine) (models.THBAmount, 
 }
 
 type pricingCandidate struct {
-	promotionID    int64
-	name           string
-	promotionPrice models.THBAmount
-	bundlePrice    models.THBAmount
-	discount       models.THBAmount
+	applicationCount int64
+	promotionID      int64
+	name             string
+	promotionPrice   models.THBAmount
+	bundlePrice      models.THBAmount
+	discount         models.THBAmount
 }
 
 func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCartLine, promotion models.PricingPromotion) (pricingCandidate, bool, error) {
@@ -287,10 +289,11 @@ func evaluatePricingPromotion(cartByIdentity map[pricingItemKey]models.PricingCa
 	}
 
 	return pricingCandidate{
-		promotionID:    promotion.PromotionID,
-		name:           promotion.Name,
-		promotionPrice: promotionPrice,
-		bundlePrice:    bundlePrice,
-		discount:       discount,
+		applicationCount: applications,
+		promotionID:      promotion.PromotionID,
+		name:             promotion.Name,
+		promotionPrice:   promotionPrice,
+		bundlePrice:      bundlePrice,
+		discount:         discount,
 	}, true, nil
 }

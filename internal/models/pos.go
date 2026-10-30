@@ -63,9 +63,11 @@ type POSQuoteLineItem struct {
 // Monetary fields are totals across every application: OriginalBundlePrice
 // covers the matched Cart quantities, PromotionPrice is the per-set price
 // multiplied by the number of applications, and Discount is their difference.
+// ApplicationCount is nil only for historical orders saved without a count.
 type AppliedProjectPromotion struct {
 	PromotionID         int64     `json:"promotion_id"`
 	Name                string    `json:"name"`
+	ApplicationCount    *int64    `json:"application_count"`
 	OriginalBundlePrice THBAmount `json:"original_bundle_price"`
 	PromotionPrice      THBAmount `json:"promotion_price"`
 	Discount            THBAmount `json:"discount"`

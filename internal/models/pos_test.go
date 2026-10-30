@@ -66,6 +66,31 @@ func TestPOSCartRequestPreservesVariantlessIdentity(t *testing.T) {
 	}
 }
 
+func TestAppliedPromotionApplicationCountJSON(t *testing.T) {
+	count := int64(2)
+	for _, test := range []struct {
+		name  string
+		count *int64
+		want  string
+	}{
+		{"known", &count, `"application_count":2`},
+		{"historical", nil, `"application_count":null`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			promotion := &AppliedProjectPromotion{ApplicationCount: test.count}
+			for _, response := range []any{POSQuote{AppliedPromotion: promotion}, POSOrder{AppliedPromotion: promotion}} {
+				data, err := json.Marshal(response)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(string(data), test.want) {
+					t.Fatalf("JSON = %s, missing %s", data, test.want)
+				}
+			}
+		})
+	}
+}
+
 func TestPOSAPIErrorCodes(t *testing.T) {
 	if ProjectErrorNotActive != ProjectAPIErrorCode("PROJECT_NOT_ACTIVE") {
 		t.Fatalf("ProjectErrorNotActive = %q", ProjectErrorNotActive)
